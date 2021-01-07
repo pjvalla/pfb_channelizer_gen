@@ -1080,28 +1080,3 @@ def plot_psd(ax, wvec, resp, format_str=None, title=None, label=None, min_n_tick
     if label is not None:
         attach_legend(ax, fontsize=legendsize)
 
-
-def test_run():
-
-    from phy_tools.qam_waveform import QAM_Mod
-    plt.close('all')
-
-    snr = 40
-    spb = 8
-
-    sig_obj = QAM_Mod(frame_mod='qpsk', spb=spb, snr=snr)
-    signal = sig_obj.gen_frames(5, frame_space_mean=100000, sig_bw=.5)[0]
-    #
-    plot_psd_helper(signal, normalize=True, miny=-80, savefig=True, plot_on=False, title='test psd')
-    plot_waterfall(signal, num_avgs=4)
-
-    # out_name = 'test_sig.mp4'
-    # water_obj.waterfall_scroll(signal, dpi_val=450, hist_len=20,
-    #                            plot_time=True,
-    #                            plot_psds=True, psd_max=40,
-    #                            mpeg_file=out_name)
-
-
-# if __name__ == "__main__":
-#
-#     test_run()
