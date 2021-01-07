@@ -8,7 +8,6 @@ Created on Mon Feb 27 13:20:20 2017
 import ipdb  # analysis:ignore
 
 from phy_tools.vgen_xilinx import gen_dsp48E1, gen_dsp48E2
-from phy_tools.vgen_altera import altera_mult, altera_madd
 from phy_tools.adv_pfb import gen_pfb
 import phy_tools.vhdl_gen as vhdl_gen
 from phy_tools.verilog_gen import gen_ram, gen_axi_fifo, gen_slicer, name_help, gen_rom, ret_addr_width, axi_fifo_inst
