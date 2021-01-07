@@ -16,7 +16,6 @@ from phy_tools import fp_utils
 from phy_tools.fp_utils import ret_num_bitsU
 from phy_tools.gen_utils import ret_module_name, ret_file_name, ret_valid_path, print_header
 from phy_tools.vgen_xilinx import gen_dsp48E1
-from phy_tools.vgen_altera import altera_mult, altera_madd
 
 # from dsp_opts import opcode_opts
 import numpy as np  #analysis:ignore
@@ -3713,12 +3712,10 @@ def gen_log_conv(path, combined_table, altera=False, tuser_width=0, tlast=False,
     (fifo_file, fifo_name) = gen_axi_fifo(path, tuser_width=tuser_width, tlast=tlast,
                                           almost_full=True, ram_style='distributed', prefix='')
     print(fifo_file)
-    if altera:
-        dsp_name = altera_madd(path)
-    else:
-        (_, dsp_name) = gen_dsp48E1(path, name='log_mac', opcode='A*B+C', a_width=output_width, b_width=input_width // 2 + 1, areg=2,
-                                    breg=2, mreg=1, preg=1, use_ce=False, use_pcout=False, c_width=interp_width + 1, 
-                                    p_msb=interp_width - 1, p_lsb=0)
+
+    (_, dsp_name) = gen_dsp48E1(path, name='log_mac', opcode='A*B+C', a_width=output_width, b_width=input_width // 2 + 1, areg=2,
+                                breg=2, mreg=1, preg=1, use_ce=False, use_pcout=False, c_width=interp_width + 1, 
+                                p_msb=interp_width - 1, p_lsb=0)
 
     with open(file_name, 'w') as fh:
         fh.write('\n')
