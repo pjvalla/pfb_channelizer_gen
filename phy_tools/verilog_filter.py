@@ -9,8 +9,8 @@ import ipdb  # analysis:ignore
 
 from phy_tools.vgen_xilinx import gen_dsp48E1, gen_dsp48E2
 from phy_tools.adv_pfb import gen_pfb
-import phy_tools.vhdl_gen as vhdl_gen
 from phy_tools.verilog_gen import gen_ram, gen_axi_fifo, gen_slicer, name_help, gen_rom, ret_addr_width, axi_fifo_inst
+from phy_tools.verilog_gen import gen_axi_downsample
 from phy_tools.gen_utils import ret_module_name, ret_file_name, ret_valid_path, print_header
 from phy_tools.fp_utils import ret_num_bitsU
 
@@ -1047,7 +1047,7 @@ def gen_cic_top(path, cic_obj, count_val=1024, qvec_correction=None, prefix='', 
     print(comb_name)
     downsamp_name = None
     if cic_obj.r_max > 1:
-        downsamp_name = vhdl_gen.gen_axi_downsample(path)
+        downsamp_name = gen_axi_downsample(path)
         print(downsamp_name)
 
     # generate final fifo to create a fully axi compliant interface
