@@ -1,15 +1,15 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from wavephy.channelizer import Channelizer, gen_exp_shifter, gen_input_buffer, gen_circ_buffer, gen_pfb, gen_downselect
-from wavephy.channelizer import gen_final_cnt, gen_output_buffer, populate_fil_table, gen_mux, gen_mask_files, gen_tones_vec
-from wavephy.channelizer import gen_chan_top, gen_chan_tb
-import wavephy.fp_utils as fp_utils
+from phy_tools.channelizer import Channelizer, gen_exp_shifter, gen_input_buffer, gen_circ_buffer, gen_pfb, gen_downselect
+from phy_tools.channelizer import gen_final_cnt, gen_output_buffer, populate_fil_table, gen_mux, gen_mask_files, gen_tones_vec
+from phy_tools.channelizer import gen_chan_top, gen_chan_tb
+import phy_tools.fp_utils as fp_utils
 from gen_buffers import gen_inbuff_logic, gen_inbuff1x_logic, gen_circbuff_logic, gen_reader, gen_writer
-import wavephy.adv_pfb as adv_filter
-from wavephy.plotly_utils import plotly_time_helper
-from wavephy.gen_xfft import gen_xfft_xci
-from wavephy.plt_utils import find_pwr
+import phy_tools.adv_pfb as adv_filter
+from phy_tools.plotly_utils import plotly_time_helper
+from phy_tools.gen_xfft import gen_xfft_xci
+from phy_tools.plt_utils import find_pwr
 import SessionState
 
 import pandas as pd
