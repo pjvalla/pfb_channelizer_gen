@@ -61,22 +61,34 @@ min_db = st.sidebar.selectbox("Plot Min DB", db_list, index=3)
 fc_scale = st.sidebar.number_input("Cut off Frequency (Proportional to Bin Width)", value=.8, min_value=0.5, max_value=1.0)
 tbw_scale = st.sidebar.number_input("Transition Bandwidth (Proportional to Bin Width) - M/2 Designs should relax specs", value=.5, min_value=0.20, max_value=1.0)
 
-K_terms = OrderedDict([(8, 8.363989999999983), (16, 8.363989999999983), (32, 8.363989999999983),
-                       (64, 8.363989999999983), (128, 8.363989999999983), (256, 8.363989999999983), (512, 8.363989999999983),
-                       (1024, 8.363989999999983), (2048, 8.363989999999983), (4096, 8.363989999999983),
-                       (8192, 8.363989999999983), (16384, 8.363989999999983), (32768, 8.363989999999983), (65536, 8.363989999999983)])
-msb_terms = OrderedDict([(8, 39), (16, 39), (32, 39), (64, 39), (128, 39), (256, 39), (512, 39), (1024, 39), 
+K_orig = OrderedDict([(8, 8.363989999999983), (16, 8.363989999999983), (32, 8.363989999999983),
+                      (64, 8.363989999999983), (128, 8.363989999999983), (256, 8.363989999999983), (512, 8.363989999999983),
+                      (1024, 8.363989999999983), (2048, 8.363989999999983), (4096, 8.363989999999983),
+                      (8192, 8.363989999999983), (16384, 8.363989999999983), (32768, 8.363989999999983), (65536, 8.363989999999983)])
+msb_orig = OrderedDict([(8, 39), (16, 39), (32, 39), (64, 39), (128, 39), (256, 39), (512, 39), (1024, 39), 
                          (2048, 39), (4096, 39), (8192, 39), (16384, 39), (32768, 39), (65536, 39)])
-offset_terms = OrderedDict([(8, .5), (16, .5), (32, .5), (64, .5), (128, .5), (256, .5), (512, 0.5), (1024, 0.5), 
+offset_orig = OrderedDict([(8, .5), (16, .5), (32, .5), (64, .5), (128, .5), (256, .5), (512, 0.5), (1024, 0.5), 
                             (2048, 0.5), (4096, 0.5), (8192, 0.5), (16384, 0.5), (32768, 0.5), (65536, 0.5)])
 
-session_state = SessionState.get(K_terms=K_terms, msb_terms=msb_terms, offset_terms=offset_terms)
+session_state = SessionState.get(K_terms=K_orig, msb_terms=msb_orig, offset_terms=offset_orig)
 
-def update_chan_obj(K_terms, offset_terms, msb_terms, taps_per_phase, gen_2X, max_fft):
+def update_chan_obj(session_state, taps_per_phase, gen_2X, max_fft):
     print(max_fft)
-    return Channelizer(M=max_fft, taps_per_phase=taps_per_phase, gen_2X=gen_2X, qvec=QVEC,
-                       qvec_coef=QVEC_COEF, fc_scale=fc_scale, tbw_scale=tbw_scale, taps=None, 
-                       K_terms=K_terms, offset_terms=offset_terms, desired_msb=msb_terms[max_fft])
+    try:
+        return Channelizer(M=max_fft, taps_per_phase=taps_per_phase, gen_2X=gen_2X, qvec=QVEC,
+                           qvec_coef=QVEC_COEF, fc_scale=fc_scale, tbw_scale=tbw_scale, taps=None, 
+                           K_terms=session_state.K_terms, offset_terms=session_state.offset_terms, 
+                           desired_msb=session_state.msb_terms[max_fft])
+    except:
+        session_state.K_terms = K_orig
+        session_state.msb_terms = msb_orig
+        session_state.offset_terms = offset_orig
+    finally:
+        return Channelizer(M=max_fft, taps_per_phase=taps_per_phase, gen_2X=gen_2X, qvec=QVEC,
+                           qvec_coef=QVEC_COEF, fc_scale=fc_scale, tbw_scale=tbw_scale, taps=None,
+                           K_terms=session_state.K_terms, offset_terms=session_state.offset_terms,
+                           desired_msb=session_state.msb_terms[max_fft])
+
 
     # remove all .v and .xci files from IP_PATH
 def remove_files(path):
@@ -106,18 +118,22 @@ gen_button = st.sidebar.button('Generate Verilog')
 
 def opt_params(max_fft, taps_per_phase, gen_2X, fc_scale, tbw_scale):
     # st.write("Optimizing Taps = {}".format(opt_button))
-    return populate_fil_table(start_size=max_fft, end_size=max_fft, fc_scale=fc_scale, taps_per_phase=taps_per_phase, gen_2X=gen_2X, tbw_scale=tbw_scale)
+    return populate_fil_table(start_size=max_fft, end_size=max_fft, fc_scale=fc_scale, 
+                              taps_per_phase=taps_per_phase, gen_2X=gen_2X, tbw_scale=tbw_scale, freqz_pts=2000)
 
 if opt_button:
-    K_terms, msb_terms, offset_terms = opt_params(max_fft, taps_per_phase, gen_2X, fc_scale, tbw_scale)
-    session_state.K_terms = K_terms
-    session_state.msb_terms = msb_terms
-    session_state.offset_terms = offset_terms
+    K_term, msb_term, offset_term = opt_params(max_fft, taps_per_phase, gen_2X, fc_scale, tbw_scale)
+    session_state.K_terms = K_term
+    session_state.msb_terms = msb_term
+    session_state.offset_terms = offset_term
 
 
 # @st.cache
-def update_psd(K_terms, offset_terms, msb_terms, taps_per_phase, gen_2X, max_fft):
-    chan_obj = update_chan_obj(K_terms, offset_terms, msb_terms, taps_per_phase, gen_2X, max_fft)
+def update_psd(session_state, taps_per_phase, gen_2X, max_fft):
+    print(session_state.K_terms)
+    print(session_state.msb_terms)
+    print(session_state.offset_terms)
+    chan_obj = update_chan_obj(session_state, taps_per_phase, gen_2X, max_fft)
     fft_size = 2048
     minx = -4. / max_fft
     maxx = 4. / max_fft
@@ -129,8 +145,8 @@ def update_psd(K_terms, offset_terms, msb_terms, taps_per_phase, gen_2X, max_fft
     return pd.DataFrame(data_dict)
 
 # @st.cache
-def update_stem(K_terms, offset_terms, msb_terms, taps_per_phase, gen_2X, max_fft):
-    chan_obj = update_chan_obj(K_terms, offset_terms, msb_terms, taps_per_phase, gen_2X, max_fft)
+def update_stem(session_state, taps_per_phase, gen_2X, max_fft):
+    chan_obj = update_chan_obj(session_state, taps_per_phase, gen_2X, max_fft)
     taps = chan_obj.taps
     data_dict = {'Taps': taps, 'sig_idx': 0}
     return pd.DataFrame(data_dict)
@@ -140,7 +156,7 @@ if gen_button:
     if not os.path.exists(IP_PATH):
         os.makedirs(IP_PATH)
     remove_files(IP_PATH)           
-    chan_obj = update_chan_obj(K_terms, offset_terms, msb_terms, taps_per_phase, gen_2X, max_fft)
+    chan_obj = update_chan_obj(session_state, taps_per_phase, gen_2X, max_fft)
     print("===========================================================")
     print("Generate K {}, Mmax {}".format(chan_obj.K, chan_obj.Mmax))
     print("===========================================================")
@@ -184,7 +200,7 @@ else:
     # st.write('New Channelizer')
 
 
-psd_df = update_psd(session_state.K_terms, session_state.offset_terms, session_state.msb_terms, taps_per_phase, gen_2X, max_fft)
+psd_df = update_psd(session_state, taps_per_phase, gen_2X, max_fft)
 # try:
 
 minx = -4. / max_fft
@@ -369,8 +385,7 @@ st.plotly_chart(fig)
 # except:
 #     pass
 
-stem_df = update_stem(session_state.K_terms, session_state.offset_terms,
-                      session_state.msb_terms, taps_per_phase, gen_2X, max_fft)
+stem_df = update_stem(session_state, taps_per_phase, gen_2X, max_fft)
 try:
     fig = plotly_time_helper(stem_df, opacity=[.8] * 2, index_str='sig_idx', y_name='Taps', stem_plot=False, miny=-.5,
                              labelsize=20, titlesize=30, xlabel='Tap Index', ylabel='Amplitude', subplot_title=('Taps',))

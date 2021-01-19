@@ -1873,7 +1873,7 @@ class LPFilter(object):
         omega_new = None
         while len(temp) == 0:
             start_freq = (self.fc - fstep)
-            stop_freq_temp = self.fc + 8 * self.trans_bw
+            stop_freq_temp = self.fc + 4 * self.trans_bw
             stop_freq = stop_freq_temp if stop_freq_temp < 1. else 1. 
             (omega, h_val, freq_step) = self.gen_omega(start_freq, stop_freq, freqz_pts)
             f = interpolate.interp1d(omega, h_val)
