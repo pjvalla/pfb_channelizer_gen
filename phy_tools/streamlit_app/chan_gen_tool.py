@@ -15,7 +15,7 @@ import SessionState
 import pandas as pd
 from collections import OrderedDict
 
-from shutil import copyfile, make_archive
+from shutil import  make_archive
 import base64
 
 import os
@@ -63,17 +63,20 @@ tbw_scale = st.sidebar.number_input("Transition Bandwidth (Proportional to Bin W
 
 K_terms = OrderedDict([(8, 8.363989999999983), (16, 8.363989999999983), (32, 8.363989999999983),
                        (64, 8.363989999999983), (128, 8.363989999999983), (256, 8.363989999999983), (512, 8.363989999999983),
-                       (1024, 8.363989999999983), (2048, 8.363989999999983)])
-msb_terms = OrderedDict([(8, 39), (16, 39), (32, 39), (64, 39), (128, 39), (256, 39), (512, 39), (1024, 39), (2048, 39)])
-offset_terms = OrderedDict([(8, .5), (16, .5), (32, .5), (64, .5), (128, .5), (256, .5), (512, 0.5), (1024, 0.5), (2048, 0.5)])
+                       (1024, 8.363989999999983), (2048, 8.363989999999983), (4096, 8.363989999999983),
+                       (8192, 8.363989999999983), (16384, 8.363989999999983)])
+msb_terms = OrderedDict([(8, 39), (16, 39), (32, 39), (64, 39), (128, 39), (256, 39), (512, 39), (1024, 39), 
+                         (2048, 39), (4096, 39), (8192, 39), (16384, 39)])
+offset_terms = OrderedDict([(8, .5), (16, .5), (32, .5), (64, .5), (128, .5), (256, .5), (512, 0.5), (1024, 0.5), 
+                            (2048, 0.5), (4096, 0.5), (8192, 0.5), (16384, 0.5)])
 
 session_state = SessionState.get(K_terms=K_terms, msb_terms=msb_terms, offset_terms=offset_terms)
 
 def update_chan_obj(K_terms, offset_terms, msb_terms, taps_per_phase, gen_2X, max_fft):
+    print(max_fft)
     return Channelizer(M=max_fft, taps_per_phase=taps_per_phase, gen_2X=gen_2X, qvec=QVEC,
                        qvec_coef=QVEC_COEF, fc_scale=fc_scale, tbw_scale=tbw_scale, taps=None, 
-                       K_terms=K_terms, offset_terms=offset_terms,
-                       desired_msb=msb_terms[max_fft])
+                       K_terms=K_terms, offset_terms=offset_terms, desired_msb=msb_terms[max_fft])
 
     # remove all .v and .xci files from IP_PATH
 def remove_files(path):
@@ -98,7 +101,6 @@ st.sidebar.markdown("""
 """, unsafe_allow_html=True)
 
 st.sidebar.markdown('<p class="big-font">Click Optimize Filter after updating filter settings</p>', unsafe_allow_html=True)
-
 opt_button = st.sidebar.button('Optimize Filter')
 gen_button = st.sidebar.button('Generate Verilog')
 
@@ -116,7 +118,13 @@ if opt_button:
 # @st.cache
 def update_psd(K_terms, offset_terms, msb_terms, taps_per_phase, gen_2X, max_fft):
     chan_obj = update_chan_obj(K_terms, offset_terms, msb_terms, taps_per_phase, gen_2X, max_fft)
-    resp, omega = chan_obj.gen_psd(fft_size=32768*2)
+    fft_size = 2048
+    minx = -4. / max_fft
+    maxx = 4. / max_fft
+    step = (maxx - minx) / fft_size
+    freq_vector = np.arange(minx, maxx, step)
+    # this vector is normalized frequency.
+    resp, omega = chan_obj.gen_psd(freq_vector=freq_vector)
     data_dict = {'Omega': omega, 'PSD':resp, 'sig_idx': 0}
     return pd.DataFrame(data_dict)
 
@@ -139,7 +147,7 @@ if gen_button:
     sample_fi = fp_utils.ret_dec_fi(0, qvec=QVEC, overflow='wrap', signed=1)
     sample_fi.gen_full_data()
     gen_output_buffer(max_fft, IP_PATH)
-    shift_name = gen_exp_shifter(chan_obj, AVG_LEN, sample_fi=sample_fi, path=IP_PATH)
+    shift_name = gen_exp_shifter(chan_obj, AVG_LEN, path=IP_PATH)
     gen_input_buffer(max_fft, IP_PATH)
     gen_circ_buffer(max_fft, IP_PATH)
     pfb_name = gen_pfb(chan_obj, path=IP_PATH)
@@ -147,7 +155,7 @@ if gen_button:
     gen_downselect(max_fft, IP_PATH)
     gen_final_cnt(IP_PATH)
     fft_name = gen_xfft_xci(IP_PATH, max_fft)
-    tones = gen_mask_files([max_fft], percent_active=.25, path=IP_PATH)
+    tones = gen_mask_files([max_fft], percent_active=.125, path=IP_PATH)
     gen_tones_vec(tones[0], M=max_fft, offset=.1 / max_fft, path=IP_PATH)
 
     gen_chan_top(IP_PATH, chan_obj, shift_name, pfb_name, fft_name)
@@ -177,195 +185,195 @@ else:
 
 
 psd_df = update_psd(session_state.K_terms, session_state.offset_terms, session_state.msb_terms, taps_per_phase, gen_2X, max_fft)
-try:
+# try:
 
-    minx = -4. / max_fft
-    maxx = 4. / max_fft
-    pwr_pt = -3.01
+minx = -4. / max_fft
+maxx = 4. / max_fft
+pwr_pt = -3.01
 
-    binl = -1. / max_fft
-    binr = 1. / max_fft
-    bin_width = binr - binl
-    # xlabel = st.latex(r'''\pi\ rads/sec''')
-    # 'Discrete Freq.'
-    fig = plotly_time_helper(psd_df, opacity=[.8] * 2, miny=min_db, maxy=10, index_str='sig_idx', x_name='Omega', y_name='PSD',
-                             labelsize=20, titlesize=30, xlabel='\u03A0 rads/sec', ylabel='dB', 
-                             subplot_title=('Fil PSD',), minx=minx, maxx=maxx) #, pwr_pts=-3.01)
+binl = -1. / max_fft
+binr = 1. / max_fft
+bin_width = binr - binl
+# xlabel = st.latex(r'''\pi\ rads/sec''')
+# 'Discrete Freq.'
+fig = plotly_time_helper(psd_df, opacity=[.8] * 2, miny=min_db, maxy=10, index_str='sig_idx', x_name='Omega', y_name='PSD',
+                            labelsize=20, titlesize=30, xlabel='\u03A0 rads/sec', ylabel='dB', 
+                            subplot_title=('Fil PSD',), minx=minx, maxx=maxx) #, pwr_pts=-3.01)
 
 
-    resp = psd_df['PSD'].to_numpy()
-    
-    lidx, ridx = find_pwr(resp, pwr_pt)
-    resp_offset_lidx = int(ridx + (ridx - lidx) * (tbw_scale / fc_scale))
-    resp_offset_ridx = int(lidx - (ridx - lidx) * (tbw_scale / fc_scale))
+resp = psd_df['PSD'].to_numpy()
 
-    stop_atten = np.max(resp[resp_offset_lidx:])
-    # print(resp[resp_offset:])
-    x_left = psd_df['Omega'].iloc[lidx]
-    x_right = psd_df['Omega'].iloc[ridx]
-    # ann_x = .20 * (maxx - minx) + minx
-    fig.add_shape(type="line", x0=x_left, y0=-1000, x1=x_left, y1=1000,
-                  line=dict(color="forestgreen", width=2, dash='dash'))
-    fig.add_shape(type="line", x0=x_right, y0=-1000, x1=x_right, y1=1000,
-                  line=dict(color="forestgreen", width=2, dash='dash'))
-    tbw_left = psd_df['Omega'].iloc[resp_offset_lidx]
-    tbw_right = psd_df['Omega'].iloc[resp_offset_ridx]
-    trans_bw = tbw_right - x_right 
-    fig.add_shape(type="line", x0=tbw_left, y0=-1000, x1=tbw_left, y1=1000,
-                  line=dict(color="magenta", width=2, dash='dash'))
-    fig.add_shape(type="line", x0=tbw_right, y0=-1000, x1=tbw_right,
-                  y1=1000, line=dict(color="magenta", width=2, dash='dash'))
-    fig.add_shape(type="line", x0=binl, y0=-1000, x1=binl,
-                  y1=1000, line=dict(color="darkgreen", width=2, dash='dash'))
-    fig.add_shape(type="line", x0=binr, y0=-1000, x1=binr,
-                  y1=1000, line=dict(color="darkgreen", width=2, dash='dash'))
-    fig.add_shape(type="line", x0=2*binl, y0=-1000, x1=2*binl,
-                  y1=1000, line=dict(color="crimson", width=2, dash='dash'))
-    fig.add_shape(type="line", x0=2*binr, y0=-1000, x1=2*binr,
-                  y1=1000, line=dict(color="crimson", width=2, dash='dash'))
-    fig.add_shape(type="line", x0=-100, y0=stop_atten, x1=100, y1=stop_atten, line=dict(color="crimson",width=2, dash='dash'))
+lidx, ridx = find_pwr(resp, pwr_pt)
+resp_offset_lidx = int(ridx + (ridx - lidx) * (tbw_scale / fc_scale))
+resp_offset_ridx = int(lidx - (ridx - lidx) * (tbw_scale / fc_scale))
 
-    offset = int((10 - min_db) * .02)
-    fig.add_annotation(
-        x=0,
-        y=stop_atten + 40 + offset,
-        xref="x",
-        yref="y",
-        text="1 Bin Width",
-        font=dict(
-            family='sans serif',
-            size=13,
-            color="darkgreen"
-        ),
-        align='center',
-        showarrow=False,
-    )
-    fig.add_annotation(
-        x=binl,
-        y=stop_atten + 40,
-        xref="x",
-        yref="y",
-        text="",
-        ax = 0,
-        ay = stop_atten + 40,
-        axref = "x", 
-        ayref = "y",
-        arrowhead = 3,
-        arrowwidth = 1.5,
-        arrowcolor="darkgreen",
-        opacity=1.0,
-    )
-    fig.add_annotation(
-        x=binr,
-        y=stop_atten + 40,
-        xref="x",
-        yref="y",
-        ax = .03 * binl,
-        ay = stop_atten + 40,
-        text = "",
-        axref = "x", 
-        ayref = "y",
-        arrowhead = 3,
-        arrowwidth = 1.5,
-        arrowcolor="darkgreen",
-        opacity=1.0,
-    )
+stop_atten = np.max(resp[resp_offset_lidx:])
+# print(resp[resp_offset:])
+x_left = psd_df['Omega'].iloc[lidx]
+x_right = psd_df['Omega'].iloc[ridx]
+# ann_x = .20 * (maxx - minx) + minx
+fig.add_shape(type="line", x0=x_left, y0=-1000, x1=x_left, y1=1000,
+                line=dict(color="forestgreen", width=2, dash='dash'))
+fig.add_shape(type="line", x0=x_right, y0=-1000, x1=x_right, y1=1000,
+                line=dict(color="forestgreen", width=2, dash='dash'))
+tbw_left = psd_df['Omega'].iloc[resp_offset_lidx]
+tbw_right = psd_df['Omega'].iloc[resp_offset_ridx]
+trans_bw = tbw_right - x_right 
+fig.add_shape(type="line", x0=tbw_left, y0=-1000, x1=tbw_left, y1=1000,
+                line=dict(color="magenta", width=2, dash='dash'))
+fig.add_shape(type="line", x0=tbw_right, y0=-1000, x1=tbw_right,
+                y1=1000, line=dict(color="magenta", width=2, dash='dash'))
+fig.add_shape(type="line", x0=binl, y0=-1000, x1=binl,
+                y1=1000, line=dict(color="darkgreen", width=2, dash='dash'))
+fig.add_shape(type="line", x0=binr, y0=-1000, x1=binr,
+                y1=1000, line=dict(color="darkgreen", width=2, dash='dash'))
+fig.add_shape(type="line", x0=2*binl, y0=-1000, x1=2*binl,
+                y1=1000, line=dict(color="crimson", width=2, dash='dash'))
+fig.add_shape(type="line", x0=2*binr, y0=-1000, x1=2*binr,
+                y1=1000, line=dict(color="crimson", width=2, dash='dash'))
+fig.add_shape(type="line", x0=-100, y0=stop_atten, x1=100, y1=stop_atten, line=dict(color="crimson",width=2, dash='dash'))
 
-    fig.add_annotation(
-        x=0,
-        y=stop_atten + 30 + offset,
-        xref="x",
-        yref="y",
-        text="2X Bin Width",
-        font=dict(
-            family='sans serif',
-            size=13,
-            color="crimson"
-        ),
-        align='center',
-        showarrow=False,
-    )
-    fig.add_annotation(
-        x=2*binl,
-        y=stop_atten + 30,
-        xref="x",
-        yref="y",
-        text="",
+offset = int((10 - min_db) * .02)
+fig.add_annotation(
+    x=0,
+    y=stop_atten + 40 + offset,
+    xref="x",
+    yref="y",
+    text="1 Bin Width",
+    font=dict(
+        family='sans serif',
+        size=13,
+        color="darkgreen"
+    ),
+    align='center',
+    showarrow=False,
+)
+fig.add_annotation(
+    x=binl,
+    y=stop_atten + 40,
+    xref="x",
+    yref="y",
+    text="",
+    ax = 0,
+    ay = stop_atten + 40,
+    axref = "x", 
+    ayref = "y",
+    arrowhead = 3,
+    arrowwidth = 1.5,
+    arrowcolor="darkgreen",
+    opacity=1.0,
+)
+fig.add_annotation(
+    x=binr,
+    y=stop_atten + 40,
+    xref="x",
+    yref="y",
+    ax = .03 * binl,
+    ay = stop_atten + 40,
+    text = "",
+    axref = "x", 
+    ayref = "y",
+    arrowhead = 3,
+    arrowwidth = 1.5,
+    arrowcolor="darkgreen",
+    opacity=1.0,
+)
 
-        ax = 0,
-        ay = stop_atten + 30,
-        axref = "x", 
-        ayref = "y",
-        arrowhead = 3,
-        arrowwidth = 1.5,
-        arrowcolor="crimson",
-        opacity=1.,
-    )
-    fig.add_annotation(
-        x=2*binr,
-        y=stop_atten + 30,
-        xref="x",
-        yref="y",
-        text="",
-        ax = .02 * binl * 2,
-        ay = stop_atten + 30,
-        axref = "x", 
-        ayref = "y",
-        arrowhead = 3,
-        arrowwidth = 1.5,
-        arrowcolor="crimson",
-        opacity=1.,
-    )
+fig.add_annotation(
+    x=0,
+    y=stop_atten + 30 + offset,
+    xref="x",
+    yref="y",
+    text="2X Bin Width",
+    font=dict(
+        family='sans serif',
+        size=13,
+        color="crimson"
+    ),
+    align='center',
+    showarrow=False,
+)
+fig.add_annotation(
+    x=2*binl,
+    y=stop_atten + 30,
+    xref="x",
+    yref="y",
+    text="",
 
-    fig.add_annotation(
-        x=.02, #x_left,
-        y=.98,
-        xref="paper",
-        yref="paper",
-        # text="3 dB Freqs = {:.5f}, {:.5f} \u03A0 rads/sec <br> Trans BW = {:.5f} \u03A0 rads/sec <br> Stopband Atten = {:.0f} dB <br> Bin Width = {:.5f} \u03A0 rads/sec <br> 2X Bin Width = {:.5f} \u03A0 rads/sec".format(
-        #     x_left, x_right, trans_bw, stop_atten, bin_width, 2*bin_width),
-        text="3 dB Freqs = {:.5f}, {:.5f} \u03A0 rads/sec <br> Trans BW = {:.5f} \u03A0 rads/sec <br> Stopband Atten = {:.0f} dB".format(
-            x_left, x_right, trans_bw, stop_atten),
-        showarrow=False,
-        font=dict(
-            family='sans serif', 
-            size=13,
-            color="#ffffff"
-        ),
-        align="center",
-        # arrowhead=2,
-        # arrowsize=1,
-        # arrowwidth=2,
-        # arrowcolor="#636363",
-        # ax=20,
-        # ay=-30,
-        bordercolor="#c7c7c7",
-        borderwidth=2,
-        borderpad=4,
-        bgcolor="#ff7f0e",
-        opacity=0.7
-    )
-    fig.update_shapes(dict(xref='x', yref='y'))
-    # fig.add_vline(x=psd_df['Omega'].iloc[lidx], line_width=3, line_dash="dash",
-    #               line_color="green", row=0, col=0)
-    # fig.add_vline(x=psd_df['Omega'].iloc[ridx], line_width=3, line_dash="dash",
-    #               line_color="green", row=0, col=0)
+    ax = 0,
+    ay = stop_atten + 30,
+    axref = "x", 
+    ayref = "y",
+    arrowhead = 3,
+    arrowwidth = 1.5,
+    arrowcolor="crimson",
+    opacity=1.,
+)
+fig.add_annotation(
+    x=2*binr,
+    y=stop_atten + 30,
+    xref="x",
+    yref="y",
+    text="",
+    ax = .02 * binl * 2,
+    ay = stop_atten + 30,
+    axref = "x", 
+    ayref = "y",
+    arrowhead = 3,
+    arrowwidth = 1.5,
+    arrowcolor="crimson",
+    opacity=1.,
+)
+
+fig.add_annotation(
+    x=.02, #x_left,
+    y=.98,
+    xref="paper",
+    yref="paper",
+    # text="3 dB Freqs = {:.5f}, {:.5f} \u03A0 rads/sec <br> Trans BW = {:.5f} \u03A0 rads/sec <br> Stopband Atten = {:.0f} dB <br> Bin Width = {:.5f} \u03A0 rads/sec <br> 2X Bin Width = {:.5f} \u03A0 rads/sec".format(
+    #     x_left, x_right, trans_bw, stop_atten, bin_width, 2*bin_width),
+    text="3 dB Freqs = {:.5f}, {:.5f} \u03A0 rads/sec <br> Trans BW = {:.5f} \u03A0 rads/sec <br> Stopband Atten = {:.0f} dB".format(
+        x_left, x_right, trans_bw, stop_atten),
+    showarrow=False,
+    font=dict(
+        family='sans serif', 
+        size=13,
+        color="#ffffff"
+    ),
+    align="center",
+    # arrowhead=2,
+    # arrowsize=1,
+    # arrowwidth=2,
+    # arrowcolor="#636363",
+    # ax=20,
+    # ay=-30,
+    bordercolor="#c7c7c7",
+    borderwidth=2,
+    borderpad=4,
+    bgcolor="#ff7f0e",
+    opacity=0.7
+)
+fig.update_shapes(dict(xref='x', yref='y'))
+# fig.add_vline(x=psd_df['Omega'].iloc[lidx], line_width=3, line_dash="dash",
+#               line_color="green", row=0, col=0)
+# fig.add_vline(x=psd_df['Omega'].iloc[ridx], line_width=3, line_dash="dash",
+#               line_color="green", row=0, col=0)
 # pwr_pts = -3.01,
-    # find 3 dB cutoff .
-    # print(psd_df.columns)
-    # print(psd_df.PSD)
-    
-    
-    fig.update_layout(autosize=False, width=900, height=550, margin=dict(l=20, r=40, b=40, t=70))
-    st.plotly_chart(fig)
-except:
-    pass
+# find 3 dB cutoff .
+# print(psd_df.columns)
+# print(psd_df.PSD)
+
+
+fig.update_layout(autosize=False, width=900, height=550, margin=dict(l=20, r=40, b=40, t=70))
+st.plotly_chart(fig)
+# except:
+#     pass
 
 stem_df = update_stem(session_state.K_terms, session_state.offset_terms,
                       session_state.msb_terms, taps_per_phase, gen_2X, max_fft)
 try:
-    fig = plotly_time_helper(stem_df, opacity=[.8] * 2, index_str='sig_idx', y_name='Taps', stem_plot=True, miny=-.5,
-                                labelsize=20, titlesize=30, xlabel='Tap Index', ylabel='Amplitude', subplot_title=('Taps',))
+    fig = plotly_time_helper(stem_df, opacity=[.8] * 2, index_str='sig_idx', y_name='Taps', stem_plot=False, miny=-.5,
+                             labelsize=20, titlesize=30, xlabel='Tap Index', ylabel='Amplitude', subplot_title=('Taps',))
 
     fig.update_layout(autosize=False, width=900, height=350, margin=dict(l=20, r=40, b=40, t=70))
     st.plotly_chart(fig)

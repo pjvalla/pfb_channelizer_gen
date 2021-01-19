@@ -5,8 +5,7 @@ Created on Mon Jun 13 23:30:30 2016
 @author: phil
 """
 import numpy as np
-from phy_tools import fp_utils
-from phy_tools.fp_utils import sfi
+from phy_tools.fp_utils import sfi, comp_max_value, nextpow2, ret_num_bitsS, ret_num_bitsU, ufi, Fi, coe_write
 import scipy as sp
 import scipy.signal as signal
 from phy_tools.plt_utils import gen_freq_vec, plot_psd_helper, plot_stem, plot_psd
