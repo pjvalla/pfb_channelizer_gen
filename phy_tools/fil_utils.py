@@ -36,7 +36,7 @@ taps_per_phase = 48
 
 curr_dir = str(Path(__file__).parent.resolve())
 
-def gen_fixed_poly_filter(poly_fil, qvec_coef=(25, 24), qvec=(16, 15), qvec_out=None, P=1):
+def gen_fixed_poly_filter(poly_fil, qvec_coef=(25, 24), qvec=(16, 15), qvec_out=None, P=1, correlator=False):
     """
        Computes coefficients that maximize dynamic range for a polyphase filter
        implementation.
@@ -44,13 +44,15 @@ def gen_fixed_poly_filter(poly_fil, qvec_coef=(25, 24), qvec=(16, 15), qvec_out=
     # quantize filters.
     qvec_out = qvec if qvec_out is None else qvec_out
 
-    poly_fil_fi = fp_fil_repr(poly_fil, qvec_coef)
-    poly_fil_float = poly_fil_fi.vec * (2 ** -qvec_coef[1])
+    poly_fil_fi, conv_gain = fp_fil_repr(poly_fil, qvec_coef)
+    poly_fil_float = poly_fil_fi.float  # vec * (2 ** -qvec_coef[1])
 
     # maximize filter output for best dynamic range
-    new_fi, fil_msb, max_tuple = max_filter_output(poly_fil_float, qvec_coef, P=P, input_width=qvec[0], output_width=qvec_out[0])
-    # (s_gain, delta_gain, path_gain, bit_gain, corr_gain, corr_msb, snr_gain) = max_tuple
-    return new_fi, fil_msb, max_tuple
+    new_fi, fil_msb, max_tuple = max_filter_output(poly_fil_float, qvec_coef, P=P, input_width=qvec[0], output_width=qvec_out[0], 
+                                                   correlator=correlator)
+
+    # return flatten fi.
+    return new_fi, fil_msb, max_tuple, conv_gain
 
 def ret_group_delay(taps):
     """
@@ -395,13 +397,13 @@ def fp_fil_repr(b_vec, qvec_coef):
             ndarray.  Uses the object supplied qvec_coef for calculations.
     """
     b_new = copy.copy(b_vec)
-    fp_taps = fp_utils.sfi(0, qvec=qvec_coef)
-    taps_gain = fp_utils.comp_max_value(fp_taps.qvec, 1) / np.max(np.abs(b_new))
+    fp_taps = sfi(0, qvec=qvec_coef)
+    taps_gain = comp_max_value(fp_taps.qvec, 1) / np.max(np.abs(b_new))
 
     b_new *= taps_gain
-    fp_taps = fp_utils.sfi(b_new, qvec=qvec_coef)
+    fp_taps = sfi(b_new, qvec=qvec_coef)
     # return quantized taps
-    return fp_taps
+    return fp_taps, taps_gain
 
 
 def comp_fil_gains(taps, P=1):
@@ -442,7 +444,7 @@ def comp_fil_gains(taps, P=1):
 
     snr_gain = 20. * np.log10(s_gain / n_gain)
     path_gain = np.max(np.abs(np.sum(taps, axis=1)))
-    bit_gain = fp_utils.nextpow2(np.max(s_gain))
+    bit_gain = nextpow2(np.max(s_gain))
 
     return (s_gain, n_gain, snr_gain, path_gain, bit_gain)
 
@@ -505,16 +507,15 @@ def comp_num_bits(taps, input_width=16, output_width=None, max_input=None, P=1):
         max_input = 2**(input_width - 1) - 1
 
     max_value = np.max(s_gain) * np.max(max_input)
-    num_bits = fp_utils.ret_num_bitsS(max_value)
+    num_bits = ret_num_bitsS(max_value)
     msb = num_bits - 1
     max_value = np.max(s_gain) * np.max(max_input)
     bit_shift = 0
     if output_width is not None:
         bit_shift = num_bits - output_width
     max_output = np.floor(max_value * 2. ** -bit_shift)
-    output_width = fp_utils.ret_num_bitsS(max_output)
-    bit_gain_frac = np.log2(np.abs(np.max(np.sum(s_gain))))
-    percent_max = bit_gain_frac % 1.
+    output_width = ret_num_bitsS(max_output)
+    percent_max = np.log2(np.abs(s_gain)) % 1.
 
     percent_max = 100 if (percent_max == 0) else 100 * percent_max
     slice_width = output_width
@@ -533,15 +534,13 @@ def max_filter_output(taps, qvec_coef, P=1, input_width=16, output_width=16, cor
           num_out  - the output of the comp_num_bits function
           b_fi     - fi object
     """
-    single_dim = False
-    if (len(np.shape(taps)) == 1):
-        single_dim = True
+    single_dim = True if (len(np.shape(taps)) == 1) else False
 
-    taps_fi = fp_utils.sfi(taps.real, qvec_coef)
+    taps_fi = sfi(taps.real, qvec_coef)
     if np.iscomplexobj(taps):
-        temp = fp_utils.sfi(taps.imag, qvec_coef)
+        temp = sfi(taps.imag, qvec_coef)
         taps = taps_fi.vec + 1j * temp.vec
-        taps_fi = fp_utils.sfi(taps, qvec_coef)
+        taps_fi = sfi(taps, qvec_coef)
 
     tup_value = comp_num_bits(taps_fi.vec, input_width, output_width, P=P)
     (in_use, slice_width, msb, s_gain, n_gain, snr_gain, path_gain, msb_gain) = tup_value
@@ -553,51 +552,45 @@ def max_filter_output(taps, qvec_coef, P=1, input_width=16, output_width=16, cor
     taps = np.atleast_2d(taps)
     corr_gain = np.max(np.sum(np.abs(taps), axis=1))
     # max correlated value -- this assumes a
-    # corr_gain = fp_utils.nextpow2(temp)
+    # corr_gain = nextpow2(temp)
     if correlator:
         s_gain = corr_gain
-        msb_gain = fp_utils.nextpow2(s_gain)
+        msb_gain = nextpow2(s_gain)
+        bit_gain_frac = np.log2(np.abs(np.max(np.sum(s_gain))))
+        percent_max = bit_gain_frac % 1.
         max_coef_val = 2.**msb_gain - 1
         in_use = (s_gain / max_coef_val) * 100.
     # only change the coefficients if less than 90# of the range is in use.
 
-    new_b = taps
-    delta_gain = 1.
-    if in_use <= 90.:
-        while in_use < 90.:
-            # note we are scaling down here hence the - 1
-            msb = msb - 1
-            delta_gain = .5 * (max_coef_val / s_gain)
-            if np.iscomplexobj(taps):
-                real_temp = np.floor(np.real(taps) * delta_gain).astype(int)
-                imag_temp = np.floor(np.imag(taps) * delta_gain).astype(int)
-                new_b = real_temp + 1j * imag_temp
-            else:
-                new_b = np.floor(taps * delta_gain).astype(int)
+    scale_fac = comp_max_value((qvec_coef[0], qvec_coef[0] - 1), True)
+    new_b = copy.deepcopy(taps)
+    # note we are scaling down here hence the - 1
+    delta_gain = (1. / (2 ** (in_use * .01))) * scale_fac
+    # factor to ensure below next bit level.
+    # max_coef_val / s_gain)
+    if np.iscomplexobj(taps):
+        real_temp = np.floor(np.real(taps) * delta_gain).astype(int)
+        imag_temp = np.floor(np.imag(taps) * delta_gain).astype(int)
+        new_b = real_temp + 1j * imag_temp
+    else:
+        new_b = np.floor(taps * delta_gain).astype(int)
 
-            tuple_val = comp_num_bits(new_b.real, input_width, output_width, P=P)
+    tuple_val = comp_num_bits(new_b.real, input_width, output_width, P=P)
 
-            in_use = tuple_val[0]
-            msb = tuple_val[2]
-            s_gain = tuple_val[3]
-            n_gain = tuple_val[4]
-            snr_gain = tuple_val[5]
-            path_gain = tuple_val[6]
-            msb_gain = tuple_val[7]
-            # (s_gain, n_gain, snr_gain, path_gain, msb_gain) = comp_fil_gains(new_b, P)
-            temp = np.max(np.sum(np.abs(new_b), axis=1))
-            corr_gain = fp_utils.nextpow2(temp)
+    (in_use, _, msb, s_gain, n_gain, snr_gain, path_gain, msb_gain) = tuple_val
+    temp = np.max(np.sum(np.abs(new_b), axis=1))
+    corr_gain = nextpow2(temp)
 
     corr_msb = corr_gain + input_width - 1
     new_b = new_b * 2**-qvec_coef[1]
     if single_dim:
         new_b = new_b.flatten()
     # modify object's parameters.
-    new_fi = fp_utils.sfi(new_b.real, qvec_coef)
+    new_fi = sfi(new_b.real, qvec_coef)
     if np.any(np.iscomplexobj(new_b)):
-        temp = fp_utils.sfi(new_b.imag, qvec_coef)
+        temp = sfi(new_b.imag, qvec_coef)
         new_vec = new_fi.vec + 1j * temp.vec
-        new_fi = fp_utils.Fi(new_vec, qvec_coef)
+        new_fi = Fi(new_vec, qvec_coef)
 
     return (new_fi, msb, (s_gain, delta_gain, path_gain, msb_gain, corr_gain, corr_msb, snr_gain))
 
@@ -844,7 +837,7 @@ class DCBlock(object):
                 and one for the q-channel
         """
 
-        input_fix = fp_utils.sfi(input_sig, qvec=self.qvec, signed=1)
+        input_fix = sfi(input_sig, qvec=self.qvec, signed=1)
         x_in = input_fix.float
 
         r1 = np.zeros((len(input_fix),))
@@ -905,11 +898,8 @@ class CICDecFil(object):
 
         self.qvec_in = qvec_in
         self.qvec_out = qvec_out
-        if r_max < R:
-            r_max = R
-
-        if r_min > r_max:
-            r_min = r_max
+        r_max = R if r_max < R else r_max
+        r_min = r_max if r_min > r_max else r_min
 
         self.M = M
         self.N = N
@@ -930,22 +920,16 @@ class CICDecFil(object):
             self.m_max = self.M
 
     def ret_bmax(self, R=None, M=None):
-        if R is None:
-            R = self.r_max
-        if M is None:
-            M = self.m_max
-
+        R = self.r_max if R is None else R
+        M = self.m_max if M is None else M
         return (np.ceil(self.N * np.log2(R * M) + self.input_width - 1).astype(np.int))
 
     def ret_btrunc(self, b_max):
         return (b_max + 1) - self.output_width
 
     def ret_m_gain(self, R=None, M=None):
-        if R is None:
-            R = self.r_max
-        if M is None:
-            M = self.m_max
-
+        R = self.r_max if R is None else R
+        M = self.m_max if M is None else M
         temp = np.float(R) * M
         gain = temp**self.N
         return np.max(gain)
@@ -998,7 +982,7 @@ class CICDecFil(object):
 
         if self.max_input is not None:
             num_max = self.m_gain * np.max(self.max_input)
-            num_bits = fp_utils.ret_num_bitsS(num_max)
+            num_bits = ret_num_bitsS(num_max)
             # slice off top CIC Bits
             bit_shift = num_bits - self.output_width
             self.max_output = np.floor(num_max * 2.**-bit_shift)
@@ -1035,7 +1019,6 @@ class CICDecFil(object):
 
         for j in np.arange(self.N + 1, 2 * self.N + 1):
             # term in loop comes from 9b where j = N+1:2N
-
             for k in range(2 * self.N + 2 - j):
                 self.h_vec[j - 1, k] = (-1)**k * \
                     comb(2 * self.N + 1 - j, k)
@@ -1125,7 +1108,6 @@ class CICDecFil(object):
         if qvec_correction is None:
             qvec_correction = self.qvec_out
 
-        int_bits_in = self.qvec_in[0] - self.qvec_in[1]
         int_bits_out = self.qvec_out[0] - self.qvec_out[1]
         gain_factor = 2.**(int_bits_out - int_bits_out)
         gain_list = np.array(gain_list)
@@ -1137,13 +1119,13 @@ class CICDecFil(object):
             trunc_list[idx] = 0
         slice_gain = 2.**np.array(trunc_list)
         corr_list = slice_gain / gain_list
-        offset_bits = fp_utils.ret_num_bitsU(np.max(trunc_list))
+        offset_bits = np.max((ret_num_bitsU(np.max(trunc_list)), 1))
         # factor of 2 to account for the slice
         # adjustment after the correction multiplier.
         # now create offset and gain tables.
-        corr_gain_fi = fp_utils.ufi(corr_list, qvec_correction, overflow='wrap')
+        corr_gain_fi = ufi(corr_list, qvec_correction, overflow='wrap')
         qvec_offset = (offset_bits, 0)
-        offset_fi = fp_utils.ufi(trunc_list, qvec_offset)
+        offset_fi = ufi(trunc_list, qvec_offset)
 
         return corr_gain_fi, offset_fi
 
@@ -1161,7 +1143,6 @@ class CICDecFil(object):
         """
 
         freq_vector, resp = self.ret_psd()
-
         idx = np.squeeze(np.argwhere(freq_vector >= 0.))
 
         freq_vector = freq_vector[idx]
@@ -1673,7 +1654,7 @@ class LPFilter(object):
                 Array of fixed point values representing the given input
                 ndarray.  Uses the object supplied qvec_coef for calculations.
         """
-        return fp_fil_repr(values, self.qvec_coef)
+        return fp_fil_repr(values, self.qvec_coef)[0]
 
     def ret_freq_resp(self, ax, fft_size=1024, freq_pts=None, title=None, freq_vector=None, titlesize=16, labelsize=14):
 
@@ -1783,7 +1764,7 @@ class LPFilter(object):
         self.poly_q = self.poly_fi.vec
         # update original filter.
         self.b_q = np.reshape(self.poly_q, (1, -1), order='F').flatten()
-        self.b_fi = fp_utils.sfi(self.b_q, self.qvec_coef, f_ints=True)
+        self.b_fi = sfi(self.b_q, self.qvec_coef, f_ints=True)
         if desired_msb is not None:
             if msb > desired_msb:
                 diff = msb - desired_msb
@@ -1809,7 +1790,7 @@ class LPFilter(object):
                 idx_max = np.argmax(fp_reprc.vec)
                 fp_reprc.vec[idx_max] = 0.
             # if hilbert transform -- replace center tap with 0.
-            fp_utils.coe_write(fp_reprc, file_name=coe_file, filter_type=True)
+            coe_write(fp_reprc, file_name=coe_file, filter_type=True)
 
         return self.b_q
 

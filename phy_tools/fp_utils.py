@@ -133,6 +133,16 @@ def sfi(vec, qvec=(16, 15), overflow='wrap', f_ints=False):
     """
     return Fi(vec, qvec=qvec, overflow=overflow, signed=1, f_ints=f_ints)
 
+def slice_fi(fi_obj, lidx, ridx, qvec=(16, 15), signed=False, overflow='wrap'):
+    # helper function that slices the binary representation and returns a new sfi object.
+    bin_values = fi_obj.bin
+    num_bits = lidx - ridx + 1
+    lidx_str = len(bin_values[0]) - lidx - 1
+    ridx_str = lidx_str + num_bits
+    slice_values = [value[lidx_str:ridx_str] for value in bin_values]
+    udec_values = bin_to_udec(slice_values)
+    return uint_to_fp(udec_values, qvec, signed, overflow)
+
 class Fi(object):
 
     def __init__(self, vec, qvec=(16, 15), overflow='wrap', signed=1, f_ints=False):
@@ -171,11 +181,6 @@ class Fi(object):
         max_int = self._max_int
         min_int = self._min_int
 
-        # if self.signed == 0 and str.lower(self.overflow) == 'wrap':
-        #     # this is so negative values and wrap appropriately on the
-        #     # asymmetric positive number line.
-        #     min_int = max_int + 1
-
         if str.lower(self.overflow) == 'saturate':
             idx = (temp >= max_int)
             if np.any(idx):
@@ -185,14 +190,14 @@ class Fi(object):
             if (np.any(idx)):
                 temp[idx] = min_int
 
-        if str.lower(self.overflow) == 'wrap':
+        if str.lower(self.overflow) == 'wrap':  #wrap should flip sign bit on overflow
             idx = (temp > max_int)
             if np.any(idx):
                 # check for wrapping here.
-                temp[idx] = temp[idx] % max_int
+                temp[idx] = (temp[idx] % max_int) + min_int * self.signed
             idx = (temp < min_int)
             if np.any(idx):
-                temp[idx] = temp[idx] % min_int
+                temp[idx] = (temp[idx] % min_int) + max_int * self.signed
 
         return temp  #.flatten()
 
@@ -219,9 +224,6 @@ class Fi(object):
             Returns unsigned decimal integer of the vector
         """
         values = copy.deepcopy(self.vec)
-
-        # min_int = int(comp_min_value(self.qvec, 0) * 2 ** self.qvec[1])
-        max_int = self._max_int  #(comp_max_value(self.qvec, 0) * 2 ** self.qvec[1])
         mod_fac = (1 << self.qvec[0])
         if self.comp:
             real_vals = np.real(values)
@@ -306,6 +308,9 @@ class Fi(object):
     @property
     def range(self):
         return range_fi(self._min_float, self._max_float, self._step)
+        
+    def reshape(self, shape=(1, -1), order='F'):
+        self.vec =np.reshape(self.vec, shape, order).flatten()
 
     def comp_range_vec(self):
         """
@@ -313,6 +318,7 @@ class Fi(object):
         """
         return np.arange(self._min_float, self._max_float + self._step, self._step)
 
+    # overloading the __getslice__ method
     def __getslice__(self, i, j):
         return self.vec[i:j]
 
@@ -435,18 +441,20 @@ def coe_write(fi_obj, radix=16, file_name=None, filter_type=False):
 
 def comp_frac_width(value, word_width, signed=0):
     """
-        Function computes the optimal fractional width given the vector and the word_width
+        Function computes the optimal fractional width given the value and the word_width
     """
-    shift_val = -1
-    temp_val = value
-    bit_shift = ret_num_bitsU(np.max(np.abs(temp_val)))
-    while bit_shift < 0:
-        temp_val = temp_val * 2
-        shift_val += 1
-        bit_shift = ret_num_bitsU(np.max(np.abs(temp_val)))
-    if (bit_shift >= shift_val):
-        shift_val = -bit_shift
-    frac_width = word_width - signed + shift_val
+    bit_shift = ret_num_bitsU(np.max(np.abs(value)))
+    if bit_shift == 0:
+        shift_val = -1
+        while bit_shift == 0:
+            value *= 2
+            shift_val += 1
+            bit_shift = ret_num_bitsU(np.max(np.abs(value)))
+
+        frac_width = word_width - signed + shift_val
+    else:
+        frac_width = word_width - signed - bit_shift
+    
     return frac_width
 
 def comp_min_value(qvec, signed=0):
@@ -634,14 +642,10 @@ def ret_num_bitsU(value):
         Function returns required number of bits for unsigned binary
         representation.
     """
+    if value < 1.:
+        return 0
     val_new = np.floor(value)
-
-    if value == 0:
-        return 1
-
-    temp = np.ceil(np.log2(np.abs(val_new + .5)))
-    return temp.astype(np.int)
-
+    return np.ceil(np.log2(np.abs(val_new + .5))).astype(np.int)
 
 def ret_num_bitsS(value):
     """
@@ -649,7 +653,7 @@ def ret_num_bitsS(value):
         complement representation.
     """
     if value < 0:
-        temp = ret_num_bitsU(np.abs(value) - 1)
+        temp = ret_num_bitsU(np.abs(value))
     else:
         temp = ret_num_bitsU(value) + 1
     return temp
@@ -945,7 +949,6 @@ def ret_fi(vec, qvec=(16, 15), overflow='wrap', signed=1):
     return Fi(vec, qvec, overflow, signed)
 
 def ret_flat_fi(vec, qvec=(16, 15), overflow='wrap', signed=1):
-
     new_qvec = (qvec[0] * 2, 0)
     if np.iscomplexobj(vec):
         real_temp = Fi(vec.real, qvec, overflow, signed)

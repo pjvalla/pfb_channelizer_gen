@@ -18,6 +18,7 @@ from collections import OrderedDict
 from IPython.core.debugger import set_trace
 
 import os
+import copy
 import ipdb
 
 from subprocess import check_output, CalledProcessError, DEVNULL
@@ -201,10 +202,10 @@ def gen_pfb(path, Mmax, rom_fi, input_width=16, output_width=16, taps_per_phase=
     _, fifo_name = gen_axi_fifo(path, tuser_width=tuser_width, tlast=tlast, almost_full=True, ram_style='block', prefix='')
     rnd_name = None
     if dsp48e2:
-        _, dsp_name0 = gen_dsp48E2(path, name=prefix + 'pfb_mac_0', opcode='A*B', a_width=25, b_width=input_width, areg=2, breg=2, mreg=1, preg=1, use_ce=True, use_pcout=True)
-        _, dsp_name = gen_dsp48E2(path, name=prefix + 'pfb_mac', opcode='PCIN+A*B', a_width=25, b_width=input_width, areg=2, breg=2, mreg=1, preg=1, use_ce=True, use_pcout=True)
+        _, dsp_name0 = gen_dsp48E2(path, name=prefix + 'pfb_mac_0', opcode='A*B', a_width=27, b_width=input_width, areg=2, breg=2, mreg=1, preg=1, use_ce=True, use_pcout=True)
+        _, dsp_name = gen_dsp48E2(path, name=prefix + 'pfb_mac', opcode='PCIN+A*B', a_width=27, b_width=input_width, areg=2, breg=2, mreg=1, preg=1, use_ce=True, use_pcout=True)
         if pfb_lsb > 0:
-            _, rnd_name = gen_dsp48E2(path, name=prefix + 'pfb_rnd', opcode='PCIN+A*B', a_width=25, b_width=input_width, use_ce=True, rnd=True, p_msb=pfb_msb, p_lsb=pfb_lsb, creg=0, preg=1)
+            _, rnd_name = gen_dsp48E2(path, name=prefix + 'pfb_rnd', opcode='PCIN+A*B', a_width=27, b_width=input_width, use_ce=True, rnd=True, p_msb=pfb_msb, p_lsb=pfb_lsb, creg=0, preg=1)
     else:
         _, dsp_name0 = gen_dsp48E1(path, name=prefix + 'pfb_mac_0', opcode='A*B', a_width=25, b_width=input_width, areg=2, breg=2, mreg=1, preg=1, use_ce=True, use_pcout=True)
         _, dsp_name = gen_dsp48E1(path, name=prefix + 'pfb_mac', opcode='PCIN+A*B', a_width=25, b_width=input_width, areg=2, breg=2, mreg=1, preg=1, use_ce=True, use_pcout=True)
@@ -353,21 +354,21 @@ def gen_pfb(path, Mmax, rom_fi, input_width=16, output_width=16, taps_per_phase=
         fh.write('    sig_d2 <= sig_d1;\n')
         fh.write('    sig_d3 <= sig_d2;\n')
         fh.write('\n')
-        fh.write('    wr_addr_d[0] <= wr_addr;\n')
         if gen_2X:
-            t_val = (mem_msb, mem_msb, phase_msb)
+            t_val = (mem_msb, mem_msb - 1, phase_msb)
+            fh.write('    wr_addr_d[0] <= wr_addr;\n')
             fh.write('    wr_addr_d[3] <= {{~rd_addr[{}], rd_addr[{}], rd_addr[{}:0]}};\n'.format(*t_val))
             for i in range(taps_per_phase - 2):
                 idx = i * 3 + 6
-                t_val = (idx, i, mem_msb, i, mem_msb, i, phase_msb)
+                t_val = (idx, i, mem_msb, i, mem_msb - 1, i, phase_msb)
                 fh.write('    wr_addr_d[{}] <= {{~rd_addr_d[{}][{}], rd_addr_d[{}][{}], rd_addr_d[{}][{}:0]}};\n'.format(*t_val))
         else:
             t_val = (mem_msb, phase_msb)
-            fh.write('    wr_addr_d[3] <= {{~rd_addr[{}], rd_addr[{}:0]}};\n'.format(*t_val))
+            fh.write('    wr_addr_d[0] <= rd_addr;\n')
+            fh.write('    wr_addr_d[3] <= rd_addr;\n')
             for i in range(taps_per_phase - 2):
                 idx = i * 3 + 6
-                t_val = (idx, i, mem_msb, i, phase_msb)
-                fh.write('    wr_addr_d[{}] <= {{~rd_addr_d[{}][{}], rd_addr_d[{}][{}:0]}};\n'.format(*t_val))
+                fh.write('    wr_addr_d[{}] <= rd_addr_d[{}];\n'.format(idx, i))
         fh.write('\n')
         for i in range(taps_per_phase):
             for j in range(1, 3):
@@ -438,11 +439,11 @@ def gen_pfb(path, Mmax, rom_fi, input_width=16, output_width=16, taps_per_phase=
         fh.write('always @(posedge clk)\n')
         fh.write('begin\n')
         fh.write('    if (tvalid_d[{}] == 1\'b1) begin\n'.format(push_idx))
-        fh.write('        for (n=3; n<{}; n=n+1) begin\n'.format(arm_latency + 1))
+        fh.write('        for (n=3; n<{}; n=n+1) begin\n'.format(arm_latency))
         fh.write('            phase_d[n] <= phase_d[n - 1];\n')
         fh.write('        end\n')
         if tuser_width:
-            fh.write('        for (n=3; n<{}; n=n+1) begin\n'.format(arm_latency + 1))
+            fh.write('        for (n=3; n<{}; n=n+1) begin\n'.format(arm_latency))
             fh.write('            tuser_d[n] <= tuser_d[n-1];\n')
             fh.write('        end\n')
         fh.write('    end\n')
@@ -458,32 +459,44 @@ def gen_pfb(path, Mmax, rom_fi, input_width=16, output_width=16, taps_per_phase=
         fh.write('    // increment offset count once per cycle through the PFB arms.\n')
         if gen_2X:
             fh.write('    if (tvalid_d[2] == 1\'b1) begin\n')
-            if count_dn:
-                fh.write('        if (phase_mux_d[2] == phase_max_slice) begin\n')
+            if interp_fil:
+                fh.write('        next_offset_cnt_prev = offset_cnt;\n')
+                fh.write('        next_offset_cnt = offset_cnt + 1;\n')
+                fh.write('        next_wr_addr = {offset_cnt + 1, phase_mux_d[2]};\n')
+                fh.write('        next_rd_addr = {offset_cnt, phase_mux_d[2]};\n')
             else:
-                fh.write('        if (phase_mux_d[2] == {}\'d0) begin\n'.format(phase_bits))
-            fh.write('            next_offset_cnt_prev = offset_cnt;\n')
-            fh.write('            next_offset_cnt = offset_cnt + 1;\n')
-            fh.write('            next_wr_addr = {offset_cnt + 1, phase_mux_d[2]};\n')
-            fh.write('            next_rd_addr = {offset_cnt, phase_mux_d[2]};\n')
-            fh.write('        end else begin\n')
-            fh.write('            next_rd_addr = {offset_cnt_prev, phase_mux_d[2]};\n')
-            fh.write('            next_wr_addr = {offset_cnt, phase_mux_d[2]};\n')
-            fh.write('        end\n')
+                if count_dn:
+                    fh.write('        if (phase_mux_d[2] == phase_max_slice) begin\n')
+                else:
+                    fh.write('        if (phase_mux_d[2] == {}\'d0) begin\n'.format(phase_bits))
+                fh.write('            next_offset_cnt_prev = offset_cnt;\n')
+                fh.write('            next_offset_cnt = offset_cnt + 1;\n')
+                fh.write('            next_wr_addr = {offset_cnt + 1, phase_mux_d[2]};\n')
+                fh.write('            next_rd_addr = {offset_cnt, phase_mux_d[2]};\n')
+                fh.write('        end else begin\n')
+                fh.write('            next_rd_addr = {offset_cnt_prev, phase_mux_d[2]};\n')
+                fh.write('            next_wr_addr = {offset_cnt, phase_mux_d[2]};\n')
+                fh.write('        end\n')
         else:
             fh.write('    if (take_data == 1\'b1) begin\n')
-            if count_dn:
-                fh.write('        if (phase == phase_max_slice) begin\n')
+            if interp_fil:
+                fh.write('        next_offset_cnt_prev = offset_cnt;\n')
+                fh.write('        next_offset_cnt = offset_cnt + 1;\n')
+                fh.write('        next_wr_addr = {offset_cnt + 1, phase};\n')
+                fh.write('        next_rd_addr = {offset_cnt, phase};\n')
             else:
-                fh.write('        if (phase == {}\'d0) begin\n'.format(phase_bits))
-            fh.write('            next_offset_cnt_prev = offset_cnt;\n')
-            fh.write('            next_offset_cnt = offset_cnt + 1;\n')
-            fh.write('            next_wr_addr = {offset_cnt + 1, phase};\n')
-            fh.write('            next_rd_addr = {offset_cnt, phase};\n')
-            fh.write('        end else begin\n')
-            fh.write('            next_rd_addr = {offset_cnt_prev, phase};\n')
-            fh.write('            next_wr_addr = {offset_cnt, phase};\n')
-            fh.write('        end\n')
+                if count_dn:
+                    fh.write('        if (phase == phase_max_slice) begin\n')
+                else:
+                    fh.write('        if (phase == {}\'d0) begin\n'.format(phase_bits))
+                fh.write('            next_offset_cnt_prev = offset_cnt;\n')
+                fh.write('            next_offset_cnt = offset_cnt + 1;\n')
+                fh.write('            next_wr_addr = {offset_cnt + 1, phase};\n')
+                fh.write('            next_rd_addr = {offset_cnt, phase};\n')
+                fh.write('        end else begin\n')
+                fh.write('            next_rd_addr = {offset_cnt_prev, phase};\n')
+                fh.write('            next_wr_addr = {offset_cnt, phase};\n')
+                fh.write('        end\n')
         fh.write('    end\n')
         fh.write('\n')
         if gen_2X:
@@ -550,17 +563,17 @@ def gen_pfb(path, Mmax, rom_fi, input_width=16, output_width=16, taps_per_phase=
             fh.write('\n')
 
         if interp_fil:
-            ram_msb = int(gen_2X)
+            ram_msb = int(gen_2X) + phase_bits
             fh.write('// 3 cycle latency\n')
             fh.write('{} #(\n'.format(ram_name))
             fh.write('  .DATA_WIDTH({}),\n'.format(ram_width))
-            fh.write('  .ADDR_WIDTH({}))\n'.format(ram_msb + 1))
+            fh.write('  .ADDR_WIDTH({}))\n'.format(int(gen_2X) + 1))
             fh.write('sample_ram_0 (\n')
             fh.write('  .clk(clk), \n')
             fh.write('  .wea(tvalid_d[{}]), \n'.format(push_idx))
-            fh.write('  .addra(wr_addr_d[2][{}:0]),\n'.format(ram_msb))
+            fh.write('  .addra(wr_addr_d[2][{}:{}]),\n'.format(ram_msb, phase_bits))
             fh.write('  .dia(sig_d3), \n')
-            fh.write('  .addrb(rd_addr[{}:0]),\n'.format(ram_msb))
+            fh.write('  .addrb(rd_addr[{}:{}]),\n'.format(ram_msb, phase_bits))
             fh.write('  .dob(delay[0])\n')
             fh.write(');\n')
             fh.write('\n')
@@ -569,13 +582,13 @@ def gen_pfb(path, Mmax, rom_fi, input_width=16, output_width=16, taps_per_phase=
             fh.write('    for (i=1; i<{}; i=i+1) begin : TAP_DELAY\n'.format(taps_per_phase))
             fh.write('        {} #(\n'.format(ram_name))
             fh.write('          .DATA_WIDTH({}),\n'.format(ram_width))
-            fh.write('          .ADDR_WIDTH({}))\n'.format(ram_msb + 1))
+            fh.write('          .ADDR_WIDTH({}))\n'.format(int(gen_2X) + 1))
             fh.write('        sample_ram_inst (\n')
             fh.write('          .clk(clk),\n')
             fh.write('          .wea(tvalid_d[{}]),\n'.format(push_idx))
-            fh.write('          .addra(wr_addr_d[i*3+2][{}:0]),\n'.format(ram_msb))
+            fh.write('          .addra(wr_addr_d[i*3+2][{}:{}]),\n'.format(ram_msb, phase_bits))
             fh.write('          .dia(delay[i-1]),\n')
-            fh.write('          .addrb(rd_addr_d[i-1][{}:0]),\n'.format(ram_msb))
+            fh.write('          .addrb(rd_addr_d[i-1][{}:{}]),\n'.format(ram_msb, phase_bits))
             fh.write('          .dob(delay[i])\n')
             fh.write('        );\n')
             fh.write('    end\n')
@@ -701,7 +714,6 @@ def gen_pfb(path, Mmax, rom_fi, input_width=16, output_width=16, taps_per_phase=
             fh.write('    .pcin(pcouti[{}]),\n'.format(taps_per_phase - 2))
             fh.write('    .a(taps[{}]),\n'.format(taps_per_phase - 1))
             fh.write('    .b(delay[{}][{}:{}]),\n'.format(taps_per_phase - 1, word_msb, input_width))
-            fh.write('    .pcout(),\n')
             fh.write('    .p(pouti)\n')
             fh.write(');\n')
             fh.write('\n')
@@ -712,7 +724,6 @@ def gen_pfb(path, Mmax, rom_fi, input_width=16, output_width=16, taps_per_phase=
             fh.write('    .pcin(pcoutq[{}]),\n'.format(taps_per_phase - 2))
             fh.write('    .a(taps[{}]),\n'.format(taps_per_phase - 1))
             fh.write('    .b(delay[{}][{}:0]),\n'.format(taps_per_phase - 1, input_width - 1))
-            fh.write('    .pcout(),\n')
             fh.write('    .p(poutq)\n')
             fh.write(');\n')
             fh.write('\n')
@@ -1395,14 +1406,15 @@ def gen_mem_ctrl(path, name, rom_fi, num_taps=32):
     file_name = 'mem_ctrl_{}.v'.format(name)
     file_name = os.path.join(path, file_name)
     module_name = ret_module_name(file_name)
+    rom_fi_new = copy.deepcopy(rom_fi)
+    rom_fi_new.reshape((1, -1), 'F')
+    _, rom_name = gen_rom(path, rom_fi_new, prefix='{}_'.format(name), rom_type='dp', write_access=True)
 
-    _, rom_name = gen_rom(path, rom_fi, prefix='{}_'.format(name), rom_type='dp', write_access=True)
-
-    addr_bits = int(np.ceil(np.log2(rom_fi.len)))
+    addr_bits = int(np.ceil(np.log2(rom_fi_new.len)))
     addr_msb = addr_bits - 1
     top_bits = int(np.ceil(np.log2(num_taps)))
     bot_msb = addr_bits - top_bits - 1
-    roll_over = rom_fi.len - 2
+    roll_over = rom_fi_new.len - 2
     case_len = 1 << top_bits
     with open(file_name, 'w') as fh:
 
@@ -1593,8 +1605,8 @@ def gen_down_select(path, name='downselect', num_channels=512, tuser_width=24):
     tuser_msb = tuser_width - 1
     chan_msb = num_channels - 1
     addr_msb = int(np.ceil(np.log2(num_channels - 1))) - 1
-    select_lines = int(np.ceil(np.log2(num_channels / 32)))
-    num_selects = int(np.ceil(num_channels / 32))
+    select_lines = np.max((int(np.ceil(np.log2(num_channels / 32))), 1))
+    num_selects = np.max((int(np.ceil(num_channels / 32)), 1))
     select_msb = select_lines - 1
     # generate mux - return delay value.
     print("==========================")
@@ -1734,27 +1746,31 @@ def gen_down_select(path, name='downselect', num_channels=512, tuser_width=24):
         fh.write('    next_load_done = load_done;\n')
         fh.write('    if (select_take == 1\'b1) begin\n')
         fh.write('        next_select_dina = s_axis_select_tdata;\n')
+        fh.write('        if (s_axis_select_tlast == 1\'b1) begin\n')
+        fh.write('            next_new_mask = 1\'b1;\n')
+        fh.write('            next_load_done = 1\'b1;\n')
+        fh.write('        end else begin\n')
+        fh.write('            next_load_done = 1\'b0;\n')
+        fh.write('            next_new_mask = 1\'b0;\n')
+        fh.write('        end\n')
         fh.write('        if (new_mask == 1\'b1) begin\n')
         fh.write('            next_select_addr = 0;\n')
-        fh.write('            next_new_mask = 1\'b0;\n')
-        fh.write('            next_load_done = 1\'b0;\n')
         fh.write('        end else begin\n')
         fh.write('            next_select_addr = select_addr + 1;\n')
-        fh.write('            if (s_axis_select_tlast == 1\'b1) begin\n')
-        fh.write('                next_new_mask = 1\'b1;\n')
-        fh.write('                next_load_done = 1\'b1;\n')
-        fh.write('            end\n')
         fh.write('        end\n')
         fh.write('    end\n')
         fh.write('    // implements the write address pointer for tap updates.\n')
         fh.write('    next_select_reg = select_reg;\n')
         fh.write('    if (select_take_d1 == 1\'b1) begin\n')
         fh.write('        case (select_addr)\n')
+        min_idx = np.min((32, num_channels))
         for i in range(num_selects):
-            lidx = 31 + i * 32
+            lidx = np.min((31 + i * 32, num_channels - 1))
             ridx = i * 32
-            fh.write('            {}\'d{}: next_select_reg[{}:{}] = select_dina;\n'.format(select_lines, i, lidx, ridx))
-        fh.write('            default: next_select_reg[31:0] = select_dina;\n')
+            tup = (select_lines, i, lidx, ridx, min_idx - 1)
+            fh.write('            {}\'d{}: next_select_reg[{}:{}] = select_dina[{}:0];\n'.format(*tup))
+        lidx = np.min((32-1, num_channels - 1))
+        fh.write('            default: next_select_reg[{}:0] = select_dina[{}:0];\n'.format(lidx, min_idx - 1))
         fh.write('        endcase\n')
         fh.write('    end\n')
         fh.write('end\n')
@@ -1827,9 +1843,6 @@ def gen_exp_shift_rtl(path, chan_obj, cic_obj):
 
     idx_bytes = int(np.ceil(ret_num_bitsU(Mmax - 1) / 8.))
     tuser_bits = idx_bytes * 8 + 8
-    
-
-    # ipdb.set_trace()
     mod_name = 'exp_shifter_{}Mmax_{}iw_{}avg_len'.format(Mmax, iw, avg_len)
 
     file_name = name_help(mod_name, path)
@@ -1873,12 +1886,12 @@ def gen_exp_shift_rtl(path, chan_obj, cic_obj):
         fh.write('\n')
         fh.write('wire s_axis_tready_s;  // delay signals\n')
         fh.write('\n')
-        fh.write('reg [{}:0] tdatai[0:22];\n'.format(iw - 1))
-        fh.write('reg [{}:0] tdataq[0:22];\n'.format(iw - 1))
+        fh.write('reg [{}:0] tdatai[0:23];\n'.format(iw - 1))
+        fh.write('reg [{}:0] tdataq[0:23];\n'.format(iw - 1))
         fh.write('\n')
-        fh.write('reg [{}:0] tuser_d[0:23];\n'.format(tuser_bits - 1))
-        fh.write('reg [23:0] tlast_d;\n')
-        fh.write('reg [23:0] take_d;\n')
+        fh.write('reg [{}:0] tuser_d[0:24];\n'.format(tuser_bits - 1))
+        fh.write('reg [24:0] tlast_d;\n')
+        fh.write('reg [24:0] take_d;\n')
         fh.write('\n')
         fh.write('wire [47:0] pcorr_i, pcorr_q;\n')
         fh.write('wire filter_tready;\n')
@@ -1906,7 +1919,7 @@ def gen_exp_shift_rtl(path, chan_obj, cic_obj):
         fh.write('assign take = (s_axis_tvalid == 1\'b1 && s_axis_tready_s == 1\'b1) ? 1\'b1 : 1\'b0;\n')
         fh.write('assign s_axis_tready_s = (almost_full == 1\'b0) ? 1\'b1 : 1\'b0;\n')
         fh.write('assign s_axis_tready = s_axis_tready_s;\n')
-        fh.write('assign fft_bin = tuser_d[20][{}:0];\n'.format(fft_msb))
+        fh.write('assign fft_bin = tuser_d[21][{}:0];\n'.format(fft_msb))
         lidx = cic_obj.qvec_out[0] - 1
         ridx = cic_obj.qvec_out[1]
         fh.write('assign filter_whole = filter_d[{}:{}];\n'.format(lidx, ridx))
@@ -1915,19 +1928,19 @@ def gen_exp_shift_rtl(path, chan_obj, cic_obj):
         fh.write('assign m_axis_tuser = m_axis_tuser_s;\n')
         fh.write('assign fifo_tdata = {i_val, q_val};\n')
         fh.write('\n')
-        fh.write('assign chan_0 = (fft_bin == {}\'d0 && take_d[20] == 1\'b1) ? 1\'b1 : 1\'b0;\n'.format(fft_msb + 1))
+        fh.write('assign chan_0 = (fft_bin == {}\'d0 && take_d[21] == 1\'b1) ? 1\'b1 : 1\'b0;\n'.format(fft_msb + 1))
         fh.write('\n')
         ridx = idx_bytes * 8
         lidx = ridx + 4
         fh.write('assign filter_tdata = s_axis_tuser[{}:{}];\n'.format(lidx, ridx))
         fh.write('assign filter_tvalid = (take == 1\'b1 && s_axis_tuser[{}:0] == {}\'d0) ? 1\'b1 : 1\'b0;\n'.format(fft_msb, fft_msb + 1))
-        fh.write('assign curr_shift = tuser_d[20][{}:{}];\n'.format(lidx, ridx))
+        fh.write('assign curr_shift = tuser_d[21][{}:{}];\n'.format(lidx, ridx))
         fh.write('\n')
         pad_size = (48 - iw) // 2
         fh.write(
-            'assign pcorr_i = {{ {{{}{{tdatai[22][{}]}}}}, tdatai[22], {{{{{}{{tdatai[22][0]}}}}}} }};\n'.format(pad_size, iw-1, pad_size))
+            'assign pcorr_i = {{ {{{}{{tdatai[23][{}]}}}}, tdatai[23], {{{{{}{{tdatai[23][0]}}}}}} }};\n'.format(pad_size, iw-1, pad_size))
         fh.write(
-            'assign pcorr_q = {{ {{{}{{tdataq[22][{}]}}}}, tdataq[22], {{{{{}{{tdataq[22][0]}}}}}} }};\n'.format(pad_size, iw-1, pad_size))
+            'assign pcorr_q = {{ {{{}{{tdataq[23][{}]}}}}, tdataq[23], {{{{{}{{tdataq[23][0]}}}}}} }};\n'.format(pad_size, iw-1, pad_size))
         fh.write('\n')
         fh.write('\n')
         fh.write('  // main clock process\n')
@@ -1948,18 +1961,18 @@ def gen_exp_shift_rtl(path, chan_obj, cic_obj):
         fh.write('integer m;\n')
         fh.write('always @(posedge clk) begin\n')
         fh.write('    shift_val <= $signed({{1{sub_out[5]}},sub_out}) - $signed(HEAD_ROOM);\n')
-        fh.write('    take_d <= {take_d[22:0], take};\n')
-        fh.write('    tlast_d <= {tlast_d[22:0], s_axis_tlast};\n')
+        fh.write('    take_d <= {take_d[23:0], take};\n')
+        fh.write('    tlast_d <= {tlast_d[23:0], s_axis_tlast};\n')
         fh.write('\n')
         fh.write('    tdatai[0] <= s_axis_tdata[31:16];\n')
         fh.write('    tdataq[0] <= s_axis_tdata[15:0];\n')
-        fh.write('    for (m=1; m<23; m=m+1) begin\n')
+        fh.write('    for (m=1; m<24; m=m+1) begin\n')
         fh.write('        tdatai[m] <= tdatai[m-1];\n')
         fh.write('        tdataq[m] <= tdataq[m-1];\n')
         fh.write('    end\n')
         fh.write('\n')
         fh.write('    tuser_d[0] <= {{s_axis_tlast, s_axis_tuser[{}:0]}};\n'.format(tuser_bits - 2))
-        fh.write('    for (m=1; m<24; m=m+1) begin\n')
+        fh.write('    for (m=1; m<25; m=m+1) begin\n')
         fh.write('        tuser_d[m] <= tuser_d[m-1];\n')
         fh.write('    end\n')
         fh.write('\n')
@@ -1975,8 +1988,7 @@ def gen_exp_shift_rtl(path, chan_obj, cic_obj):
         fh.write('    end\n')
         fh.write('    next_sub_out = sub_out;\n')
         fh.write('    if (chan_0 == 1\'b1) begin\n')
-        fh.write(
-            '        next_sub_out = $signed({{1{curr_shift[4]}} ,curr_shift}) - $signed({{1{filter_whole_d[4]}}, filter_whole_d});\n')
+        fh.write('        next_sub_out = $signed({{1{curr_shift[4]}} ,curr_shift}) - $signed({{1{filter_whole_d[4]}}, filter_whole_d});\n')
         fh.write('    end\n')
         fh.write('end\n')
         fh.write('\n')
@@ -2040,10 +2052,10 @@ def gen_exp_shift_rtl(path, chan_obj, cic_obj):
         fh.write('u_fifo(\n')
         fh.write('    .clk(clk),\n')
         fh.write('    .sync_reset(sync_reset),\n')
-        fh.write('    .s_axis_tvalid(take_d[23]),\n')
+        fh.write('    .s_axis_tvalid(take_d[24]),\n')
         fh.write('    .s_axis_tdata(fifo_tdata),\n')
-        fh.write('    .s_axis_tlast(tlast_d[23]),\n')
-        fh.write('    .s_axis_tuser(tuser_d[23]),\n')
+        fh.write('    .s_axis_tlast(tlast_d[24]),\n')
+        fh.write('    .s_axis_tuser(tuser_d[24]),\n')
         fh.write('    .s_axis_tready(),\n')
         fh.write('    .almost_full(almost_full),\n')
         fh.write('    .m_axis_tvalid(m_axis_tvalid),\n')

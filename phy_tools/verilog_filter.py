@@ -78,10 +78,10 @@ def gen_dec_filter(path, fil_obj, prefix='', tuser_width=0, tlast=False, ram_sty
     Mmax = fil_obj.M - 1
     pfb_prefix = prefix
 
-    m_bits = ret_num_bitsU(fil_obj.M)
+    m_bits = np.max((ret_num_bitsU(fil_obj.M), 1))
     m_msb = m_bits - 1
 
-    phase_bits = ret_num_bitsU(fil_obj.M - 1)
+    phase_bits = np.max((ret_num_bitsU(fil_obj.M - 1), 1))
     phase_msb = phase_bits - 1
 
     word_bits = 2 * qvec[0]
@@ -386,7 +386,7 @@ def gen_mac_filter(path, prefix='', qvec=(16, 15), qvec_coef=(25, 24),tuser_widt
     file_name = path + '{}mac_filter.v'.format(prefix)
     module_name = ret_module_name(file_name)
 
-    tap_addr_width = ret_num_bitsU(num_coeffs - 1)
+    tap_addr_width = np.max((ret_num_bitsU(num_coeffs - 1), 1))
     tap_addr_msb = tap_addr_width - 1
     tuser_width = int(tuser_width)
     opcode= ['A*B+C', 'A*B+P'] if not first_mac else ['A*B', 'A*B+P']
@@ -551,7 +551,7 @@ def gen_mac_filter(path, prefix='', qvec=(16, 15), qvec_coef=(25, 24),tuser_widt
             fh.write('assign wr_addr_reset = (wr_addr == upper_cnt) ? 1\'b1 : 1\'b0;\n')
             fh.write('assign cnt_reset = (rd_cnt == upper_cnt) ? 1\'b1 : 1\'b0;\n')
             tup = (clat_msb - 1, clat_msb - 1)
-            fh.write('assign opcode = (cycling_d[{}] == 1\'b1 && rd_cnt_d[{}] == 0) ? 1\'b1 : 1\'b0;\n'.format(*tup))
+            fh.write('assign opcode = (cycling_d[{}] == 1\'b1 && rd_cnt_d[{}] == 0) ? 1\'b0 : 1\'b1;\n'.format(*tup))
 
         if last_mac:
             fh.write('assign data_bus = {pouti, poutq};\n')
@@ -983,8 +983,8 @@ def gen_cic_top(path, cic_obj, count_val=1024, qvec_correction=None, prefix='', 
 
     qvec_msb = qvec_correction[0] - 1
 
-    r_bits = ret_num_bitsU(max_decimation)
-    m_bits = ret_num_bitsU(max_diff_delay)
+    r_bits = np.max((ret_num_bitsU(max_decimation), 1))
+    m_bits = np.max((ret_num_bitsU(max_diff_delay), 1))
 
     input_msb = input_width - 1
     output_msb = output_width - 1
@@ -995,8 +995,8 @@ def gen_cic_top(path, cic_obj, count_val=1024, qvec_correction=None, prefix='', 
     rom_width = qvec_correction[0]
     rom_msb = rom_width - 1
 
-    slice_bits = ret_num_bitsU(b_trunc)
-    count_bits = ret_num_bitsU(count_val)
+    slice_bits = np.max((ret_num_bitsU(b_trunc), 1))
+    count_bits = np.max((ret_num_bitsU(count_val), 1))
     corr_bits_out = input_width + rom_width
     (corr_gain_fi, offset_fi) = cic_obj.gen_tables()
 
@@ -1040,14 +1040,14 @@ def gen_cic_top(path, cic_obj, count_val=1024, qvec_correction=None, prefix='', 
     print(fifo_name)
     print(corr_name)
 
-    addr_width = ret_num_bitsU(2 * total_delay)
+    addr_width = np.max((ret_num_bitsU(2 * total_delay), 1))
     fifo_depth = 1 << addr_width
     af_thresh = fifo_depth - total_delay - 5
     _, comb_name = gen_comb(path, cic_obj, prefix=prefix, tuser_width=tuser_width, tlast=tlast)
     print(comb_name)
     downsamp_name = None
     if cic_obj.r_max > 1:
-        downsamp_name = gen_axi_downsample(path)
+        downsamp_name = vhdl_gen.gen_axi_downsample(path)
         print(downsamp_name)
 
     # generate final fifo to create a fully axi compliant interface

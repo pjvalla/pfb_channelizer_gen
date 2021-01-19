@@ -146,6 +146,8 @@ def gen_chan_tb(path, chan_obj, mask_len):
 
     assert(path is not None), 'User must specify Path'
     path = ret_valid_path(path)
+    
+    AVG_LEN = 128
 
     full_path = os.path.abspath(path)
     Mmax = chan_obj.Mmax
@@ -318,7 +320,7 @@ def gen_chan_tb(path, chan_obj, mask_len):
         fh.write('   .s_axis_select_tready(s_axis_select_tready),\n')
         fh.write('\n')
         fh.write('   .fft_size({}\'d{}),\n'.format(fft_bits, Mmax))
-        fh.write('   .avg_len(9\'b000001000),\n')
+        fh.write('   .avg_len(9\'d{}),\n'.format(AVG_LEN))
         fh.write('   .payload_length(16\'d{}),\n'.format(payload_len))
         fh.write('   .eob_tag(eob_tag),\n')
         fh.write('\n')
@@ -637,7 +639,7 @@ def gen_chan_top(path, chan_obj, shift_name, pfb_name, fft_name):  # gen_2X, Mma
         fh.write('    .s_axis_tdata(s_axis_tdata),\n')
         fh.write('    .s_axis_tready(s_axis_tready),\n')
         fh.write('\n')
-        fh.write('    .num_phases(fft_size_s),\n')
+        fh.write('    .fft_size(fft_size_s),\n')
         fh.write('    .phase(buffer_phase),\n')
         fh.write('\n')
         fh.write('    .m_axis_tvalid(buffer_tvalid),\n')
@@ -1032,11 +1034,12 @@ class Channelizer(object):
     """
     def __init__(self, M=64, Mmax=None, pbr=.1, sba=-80, taps_per_phase=32, gen_2X=True, qvec_coef=(25, 24),
                  qvec=(18, 17), desired_msb=None, K_terms=K_default, offset_terms=offset_default, fc_scale=1., 
-                 tbw_scale=.5, taps=None):
+                 tbw_scale=.5, taps=None, max_masks=50):
 
         self.taps_per_phase = taps_per_phase
         self.qvec_coef = qvec_coef
         self.qvec = qvec
+        self.max_masks = max_masks
 
         self.gen_2X = gen_2X
         self.M = M
@@ -1436,7 +1439,7 @@ class Channelizer(object):
 
         if percent_active is not None:
             np.random.seed(10)
-            num_bins = int(self.M * percent_active)
+            num_bins = np.min((int(self.M * percent_active), self.max_masks))
             bin_values = np.random.choice(a=self.M, size=num_bins, replace=False)
             bin_values = np.sort(bin_values)
         # map this vector to 32 bit words  -- there are 64 words in 2048 bit vector for example.
@@ -2060,7 +2063,7 @@ def gen_output_buffer(Mmax=512, path=IP_PATH):
     print("==========================")
     print(" output buffer")
     print("")
-    cnt_width = int(np.ceil(np.log2(Mmax - 1)))
+    cnt_width = 16  #int(np.ceil(np.log2(Mmax - 1)))
     ram_out = vgen.gen_ram(path, ram_type='dp', memory_type='read_first', ram_style='block')
     print(ram_out)
     # cnt_in = vgen.gen_aligned_cnt(path, cnt_width=cnt_width, tuser_width=0, tlast=True, start_sig=False, dwn_cnt=False)
@@ -2165,7 +2168,7 @@ def gen_final_cnt(path=IP_PATH):
     print("")
 
 
-def gen_exp_shifter(chan_obj, avg_len=16, sample_fi=None, path=IP_PATH):
+def gen_exp_shifter(chan_obj, avg_len=16, path=IP_PATH):
     print("=================================")
     print("exp shifter")
     print("")
@@ -2198,7 +2201,7 @@ def gen_tones(M=512, lidx=30, ridx=31, offset=0, path=SIM_PATH):
     scale = np.max(np.abs((lidx, ridx)))
     tone_vec = np.arange(lidx, ridx, 1) / float(M / 2) + offset
     phase_vec = np.arange(lidx, ridx, 1) / (scale * np.pi)
-    num_samps = 8192 * 64
+    num_samps = 8192 * 256
     tones = [gen_comp_tone(num_samps, tone_value, phase_value) for (tone_value, phase_value) in zip(tone_vec, phase_vec)]
     sig = np.sum(tones, 0)
     sig = sig / (2. * np.max(np.abs(sig)))
@@ -2220,7 +2223,6 @@ def gen_tones_vec(tone_vec, M=512, offset=0, path=SIM_PATH):
     tones = [gen_comp_tone(num_samps, tone_value, phase_value) for (tone_value, phase_value) in zip(tones, phase_vec)]
     sig = np.sum(tones, 0)
     sig = sig / (2. * np.max(np.abs(sig)))
-    sig *= .5
 
     sig_fi = fp_utils.ret_fi(sig, qvec=(16, 15), overflow='saturate')
 
@@ -2373,7 +2375,7 @@ def process_chan_out(file_name, iq_offset=10*TAPS_PER_PHASE, Mmax=64):
     mask_i = np.uint64(((1 << 16) - 1) << 16)
     mask_q = np.uint64((1 << 16) - 1)
     mask_tuser = np.uint64(((1 << tuser_bits) - 1) << 32)
-    mask_fft_bin = int(((1 << int(np.log2(Mmax))) -1))
+    mask_fft_bin = int(((1 << int(np.log2(Mmax-1))) -1))
     mask_tlast = np.uint64(1 << 32 + tuser_bits)
 
     # ipdb.set_trace()
@@ -2559,8 +2561,8 @@ def gen_logic(chan_obj, path=IP_PATH, avg_len=256, fs=6.4E6):
     """
     sample_fi = fp_utils.ret_dec_fi(0, qvec=chan_obj.qvec, overflow='wrap', signed=1)
     sample_fi.gen_full_data()
-    gen_output_buffer(chan_obj.Mmax, path)
-    gen_exp_shifter(chan_obj, avg_len, sample_fi=sample_fi, path=path)
+    # gen_output_buffer(chan_obj.Mmax, path)  only used in synthesis bank.
+    gen_exp_shifter(chan_obj, avg_len, path=path)
     gen_input_buffer(chan_obj.Mmax, path)
     gen_circ_buffer(chan_obj.Mmax, path)
     gen_pfb(chan_obj, path, fs=fs)
@@ -2570,7 +2572,7 @@ def gen_logic(chan_obj, path=IP_PATH, avg_len=256, fs=6.4E6):
 
 def get_args():
 
-    M_list = [8, 16, 32, 64, 128, 256, 512, 1024, 2048]
+    M_list = [8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384]
     avg_len = 256
     chan_file = SIM_PATH + 'chan_out_8_file.bin'
     synth_file = SIM_PATH + 'synth_out_8_file.bin'

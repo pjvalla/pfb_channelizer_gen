@@ -1530,6 +1530,7 @@ class PolyTimingRec(object):
         self.taps_per_path = taps_per_path
         self.samp_ratio = samps_baud_out / samps_baud_in
         self.mf = mf
+        self.q_nom = np.float(P) * samps_baud_in / samps_baud_out
 
         self.gen_filters()
 
@@ -1578,25 +1579,28 @@ class PolyTimingRec(object):
         gain_lin = mf_pwr / pwr
 
         self.dmf = taps * gain_lin
-        self.dmfOrig = self.dmf
+        self.dmf_orig = self.dmf
         self.poly_dfil = np.reshape(self.dmf, (self.P, -1), order='F')
 
         # need lines for HW
         self.fil_gain = fil_gain
 
         # regenerate dmf
-        self.dmf = np.reshape(self.poly_dfil, (-1,), order='F')
+        # self.dmf = np.reshape(self.poly_dfil, (-1,), order='F')
 
-    def gen_fix_filters(self, qvec_coef, qvec):
+    def gen_fix_filters(self, qvec_coef, qvec, qvec_out=None):
         """
             Helper function that converts matched filter, MF, and differential matched filter, dMF, into fixed point 
             implementaion
         """
-        mf_fi, mf_msb, max_tuple = gen_fixed_poly_filter(self.mf, qvec_coef, qvec, qvec, self.P)
+        qvec_out = qvec if qvec_out is None else qvec_out
+        mf_fi, mf_msb, max_tuple, taps_gain = gen_fixed_poly_filter(self.poly_fil, qvec_coef, qvec, qvec_out, self.P)
 
-        delta_gain = max_tuple[1]
+        delta_gain = max_tuple[1] * taps_gain
+
         # scale the dmf_fi by the delta_gain applied to mf -- keeps scaling of orignal design.
-        dmf_fi = sfi(self.dmf*delta_gain, qvec_coef)
+        # print("delta_gain = {}".format(delta_gain))
+        dmf_fi = sfi(self.poly_dfil*delta_gain, qvec_coef)
 
         return mf_fi, dmf_fi, mf_msb
 
@@ -1629,7 +1633,6 @@ class PolyTimingRec(object):
             taps_i[0] = np.real(value)
             taps_q[0] = np.imag(value)
             for q_val in range(P):
-                # q_val = (q_val + (self.P) // 2) % self.P
                 lidx = q_val * taps_per_phase
                 ridx = (q_val + 1) * taps_per_phase
                 hmf = poly_fil[lidx:ridx]  
@@ -1742,10 +1745,12 @@ class PolyTimingRec(object):
 
         num_outputs = int(3 * len(in_vec) * self.samp_ratio)
         mfil_out = np.zeros((num_outputs,), dtype=np.complex128)
+        dmfil_out = np.zeros_like(mfil_out, dtype=np.complex128)
         syms = np.zeros_like(mfil_out, dtype=np.complex128)
         timing_sig = np.zeros_like(mfil_out, dtype=np.int64)
         nco_sig = np.zeros_like(mfil_out, dtype=np.float64)
         loop_sig = np.zeros_like(mfil_out, dtype=np.float64)
+        loop_int = np.zeros_like(mfil_out, dtype=np.float64)
         err_sig = np.zeros_like(mfil_out, dtype=np.float64)
 
         if taps_i is None:
@@ -1767,32 +1772,34 @@ class PolyTimingRec(object):
         # ipdb.set_trace()
         poly_fil = np.reshape(self.poly_fil, (1, -1)).flatten()
         poly_dfil = np.reshape(self.poly_dfil, (1, -1)).flatten()
+        print("max filters = {} {}".format(np.max(np.abs(poly_fil)), np.max(np.abs(poly_dfil))))
 
         #  PLL parameters
         (kp, ki) = gain_calc_walls(loop_eta, loop_bw_ratio, kpd_int)
-        print(kp, ki)
-        # kp = 0.
-        # ki = 0.
-        idx_vec = PolyTimingRec.numba_sync(np.array(in_vec), poly_fil, poly_dfil, taps_i, taps_q, mfil_out, 
-                                           syms, timing_sig, nco_sig, loop_sig, err_sig, kp, ki, self.P, self.samps_baud_in, 
+        print("Kp/Ki = {}, {}".format(kp, ki))
+        idx_vec = PolyTimingRec.numba_sync(np.array(in_vec), poly_fil, poly_dfil, taps_i, taps_q, mfil_out, dmfil_out,
+                                           syms, timing_sig, nco_sig, loop_sig, loop_int, err_sig, kp, ki, self.P, self.samps_baud_in, 
                                            self.samps_baud_out, accum_init, pll_count_init, q_start)
 
 
         syms = syms[:idx_vec[0]]
         mfil_out = mfil_out[:idx_vec[1]]
+        dmfil_out = dmfil_out[:idx_vec[1]]
         timing_sig = timing_sig[:idx_vec[2]]
         nco_sig = nco_sig[:idx_vec[3]]
         loop_sig = loop_sig[:idx_vec[0]]
+        loop_int = loop_int[:idx_vec[0]]
         err_sig = err_sig[:idx_vec[0]]
 
-        return syms, mfil_out, timing_sig, nco_sig, loop_sig, err_sig
+        return syms, mfil_out, dmfil_out, timing_sig, nco_sig, loop_sig, loop_int, err_sig
 
     # [::1] indicates a contiguous array avoiding the copy inside np.dot
     @staticmethod
-    @njit(int64[:](complex128[:], float64[::1], float64[::1], float64[::1], float64[::1], complex128[:], complex128[:], int64[:], float64[::1],
-                   float64[::1], float64[::1], float64, float64, int64, int64, int64, float64, int64, int64), cache=False)
-    def numba_sync(in_vec, poly_fil, poly_dfil, taps_i, taps_q, mfout, syms, timing_sig, nco_sig, loop_sig, err_sig,
-                   kp, ki, P, samps_baud_in, samps_baud_out, accum_init, pll_count_init, q_start):
+    @njit(int64[:](complex128[:], float64[::1], float64[::1], float64[::1], float64[::1], complex128[::1], complex128[::1], 
+                   complex128[::1], int64[:], float64[::1], float64[::1], float64[::1], float64[::1], float64, float64, 
+                   int64, int64, int64, float64, int64, int64), cache=False)
+    def numba_sync(in_vec, poly_fil, poly_dfil, taps_i, taps_q, mfout, dmfout, syms, timing_sig, nco_sig, loop_sig, loop_int,
+                   err_sig, kp, ki, P, samps_baud_in, samps_baud_out, accum_init, pll_count_init, q_start):
         """
             Numba accelerated sync_float function.  Returns a array of integers indicating the lengths of :
             mfil_out (matched fi lter output), syms (synchronized symbols), timing_sig
@@ -1830,16 +1837,12 @@ class PolyTimingRec(object):
         q_new = q_start
         accum = accum_init
 
-        q_delay = q_nom * np.ones((10,), dtype=np.float64)
+        # simulates real-world loop delay caused by logic latency.
         loop_fil_delay = np.zeros((50,), dtype=np.float64)
-
         loop_fil = 0
-
         # Filter Real Samples
         while 1:
             # Grab fractional portion and store it  Update with new fractional skipping operation
-            # q_new_array = np.copy(q_delay)
-            # q_new = q_new_array[2]
             while q_new >= float(P):
                 if ii > num_samps - 1:
                     break
@@ -1869,8 +1872,8 @@ class PolyTimingRec(object):
             # Perform Polyphase filtering.
             lidx = Q * taps_per_phase
             ridx = (Q + 1) * taps_per_phase
-            hmf = poly_fil[lidx:ridx]  #.flatten()
-            hbar = poly_dfil[lidx:ridx]  #.flatten()
+            hmf = poly_fil[lidx:ridx]  
+            hbar = poly_dfil[lidx:ridx]
 
             i_h = np.dot(hmf, taps_i)
             q_h = np.dot(hmf, taps_q)
@@ -1892,13 +1895,13 @@ class PolyTimingRec(object):
                 loop_fil = prop + accum
                 timing_sig[timing_sig_cnt] = 1
                 loop_sig[sym_cnt] = loop_fil
+                loop_int[sym_cnt] = accum
                 loop_fil_delay[1:] = loop_fil_delay[:-1]
                 loop_fil_delay[0] = loop_fil
 
                 err_sig[sym_cnt] = err
                 pll_count = samps_baud_out - 1
-                testa = np.copy(loop_fil_delay)
-                loop_fil = testa[25]
+                loop_fil = loop_fil_delay[25]
                 # average time error for I and Q channel.
                 # complex(i_h,q_h); # this goes to the demodulator or
                 # constellation plot.
@@ -1906,21 +1909,20 @@ class PolyTimingRec(object):
                 timing_sig[timing_sig_cnt] = 0
                 err = 0
                 pll_count -= 1
-                loop_fil = 0
+                loop_fil_delay[1:] = loop_fil_delay[:-1]
+                loop_fil_delay[0] = 0
+
+                loop_fil = loop_fil_delay[25]
 
             timing_sig_cnt += 1
             # implement PLL algorithm.
             mfout[mfout_cnt] = i_h + 1j * q_h
+            dmfout[mfout_cnt] = i_dh + 1j * q_dh
             mfout_cnt += 1
 
             # feedback controller.
             q_step = loop_fil + q_nom
             q_new += q_step
-
-            q_delay[1:] = q_delay[:-1]
-            q_delay[0] = q_new
-            # ipdb.set_trace()
-
 
         return np.array([sym_cnt, mfout_cnt, timing_sig_cnt, nco_cnt])
 
@@ -2027,8 +2029,8 @@ class PolyTimingRec(object):
 
             # Pull out filter coefficients
             # Perform Polyphase filtering.
-            hmf = self.poly_fil[Q]
-            hbar = self.poly_dfil[Q]
+            hmf = self.poly_fil[Q][::-1]
+            hbar = self.poly_dfil[Q][::-1]
 
             i_h = np.dot(hmf, taps_i)
             q_h = np.dot(hmf, taps_q)

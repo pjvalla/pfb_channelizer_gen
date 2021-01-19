@@ -642,8 +642,8 @@ def gen_mod_logic(path, mod_value=3):
         fh.write('endmodule\n')
 
 
-def gen_complex_mult(path, input_width=16, b_width=25, output_width=16, tuser_width=0,
-                     tlast=False, slice_msb=31, slice_lsb=16, almost_full_thresh=None):
+def gen_complex_mult(path, input_width=16, b_width=25, tuser_width=0, tlast=False, slice_msb=31, slice_lsb=16, 
+                     almost_full_thresh=None, dsp48e2=False):
     """
         Generates logic to align pipelined complex multiplier.
 
@@ -659,6 +659,8 @@ def gen_complex_mult(path, input_width=16, b_width=25, output_width=16, tuser_wi
     assert(path is not None), 'User must specify Path'
     path = ret_valid_path(path)
 
+    output_width = slice_msb - slice_lsb + 1
+
     mod_name = 'complex_mult_iw{}_ow{}'.format(input_width, output_width)
     file_name = name_help(mod_name, path)
     module_name = ret_module_name(file_name)
@@ -666,7 +668,6 @@ def gen_complex_mult(path, input_width=16, b_width=25, output_width=16, tuser_wi
     oword_msb = output_width * 2 - 1
     oword_width = oword_msb + 1
     input_msb = input_width * 2 - 1
-#    output_msb = output_width - 1
     tuser_msb = tuser_width - 1
     fifo_addr_width = 4
     if almost_full_thresh is None:
@@ -708,7 +709,10 @@ def gen_complex_mult(path, input_width=16, b_width=25, output_width=16, tuser_wi
         fh.write('\n')
         fh.write('wire [47:0] pcout_ar_br, pcout_ar_bi, i_term, q_term;\n')
         fh.write('\n')
-        fh.write('wire [24:0] ar, ai;\n')
+        if dsp48e2:
+            fh.write('wire [26:0] ar, ai;\n')
+        else:
+            fh.write('wire [24:0] ar, ai;\n')
         fh.write('wire [17:0] br, bi;\n')
         fh.write('wire [{}:0] fifo_tdata;\n'.format(oword_msb))
         fh.write('reg [4:0] valid_d;\n')
@@ -724,7 +728,7 @@ def gen_complex_mult(path, input_width=16, b_width=25, output_width=16, tuser_wi
         else:
             fh.write('assign bi = s_axis_tdata_0[{}:0];\n'.format(input_width-1))
             fh.write('assign br = s_axis_tdata_0[{}:{}];\n'.format(input_msb, input_width))  #analysis:ignore
-        pad = 25 - b_width
+        pad = 25 - b_width if dsp48e2 is False else 27 - b_width
         if pad > 0:
             fh.write('assign ar = {{{}{{s_axis_tdata_1[{}]}}}}, s_axis_tdata_1[{}:{}]}};\n'.format(pad, iword_msb, iword_msb, b_width))  #analysis:ignore
             fh.write('assign ai = {{{{{}{{s_axis_tdata_1[{}]}}}}, s_axis_tdata_1[{}:0]}};\n'.format(pad, b_width - 1, b_width - 1))
@@ -763,8 +767,12 @@ def gen_complex_mult(path, input_width=16, b_width=25, output_width=16, tuser_wi
             fh.write('end\n')
             fh.write('\n')
         dsp_name = 'cm_mult_0'
-        dsp_name = gen_dsp48E1(path, name=dsp_name, opcode='A*B', a_width=25, b_width=18, areg=2, breg=2, mreg=1, preg=1,
-                               use_ce=False, use_pcout=True)[1]
+        if dsp48e2:
+            dsp_name = gen_dsp48E1(path, name=dsp_name, opcode='A*B', a_width=27, b_width=18, areg=2, breg=2, mreg=1, preg=1,
+                                use_ce=False, use_pcout=True)[1]
+        else:
+            dsp_name = gen_dsp48E2(path, name=dsp_name, opcode='A*B', a_width=25, b_width=18, areg=2, breg=2, mreg=1, preg=1,
+                    use_ce=False, use_pcout=True)[1]
         print(dsp_name)
         fh.write('{} ar_br (\n'.format(dsp_name))
         # fh.write('    // this is rounded. a and b delay = 2.\n')
@@ -784,9 +792,12 @@ def gen_complex_mult(path, input_width=16, b_width=25, output_width=16, tuser_wi
         fh.write(');\n')
         fh.write('\n')
         dsp_name = 'cm_pcin_minus'
-
-        dsp_name = gen_dsp48E1(path, name=dsp_name, opcode='PCIN-A*B', a_width=25, b_width=18, areg=3, breg=3, mreg=1,
-                               preg=1, use_ce=False, use_pcout=True)[1]
+        if dsp48e2:
+            dsp_name = gen_dsp48E2(path, name=dsp_name, opcode='PCIN-A*B', a_width=27, b_width=18, areg=3, breg=3, mreg=1,
+                                preg=1, use_ce=False, use_pcout=True)[1]
+        else:
+            dsp_name = gen_dsp48E1(path, name=dsp_name, opcode='PCIN-A*B', a_width=25, b_width=18, areg=3, breg=3, mreg=1,
+                                preg=1, use_ce=False, use_pcout=True)[1]
         print(dsp_name)
         fh.write('{} ai_bi (\n'.format(dsp_name))
         # fh.write('    // this is rounded. a and b delay = 3.\n')
@@ -799,8 +810,12 @@ def gen_complex_mult(path, input_width=16, b_width=25, output_width=16, tuser_wi
         fh.write(');\n')
         fh.write('\n')
         dsp_name = 'cm_pcin_plus'
-        dsp_name = gen_dsp48E1(path, name=dsp_name, opcode='PCIN+A*B', a_width=25, b_width=18, areg=3, breg=3, mreg=1,
-                               preg=1, use_ce=False, use_pcout=True)[1]
+        if dsp48e2:
+            dsp_name = gen_dsp48E2(path, name=dsp_name, opcode='PCIN+A*B', a_width=25, b_width=18, areg=3, breg=3, mreg=1,
+                                   preg=1, use_ce=False, use_pcout=True)[1]
+        else:
+            dsp_name = gen_dsp48E1(path, name=dsp_name, opcode='PCIN+A*B', a_width=25, b_width=18, areg=3, breg=3, mreg=1,
+                                   preg=1, use_ce=False, use_pcout=True)[1]
         print(dsp_name)
         fh.write('{} ai_br (\n'.format(dsp_name))
         fh.write('  .clk(clk),\n')
@@ -1458,7 +1473,7 @@ def gen_var_delay(path, cnt_width=16, tuser_width=0, tlast=False, prefix='', mem
     pdelay = adder_pipeline(cnt_width)
     
     max_cnt = mem_depth - 1
-    mem_addr_bits = ret_num_bitsU(max_cnt)
+    mem_addr_bits = np.max((ret_num_bitsU(max_cnt), 1))
 
     # generate offset adder
     sub_str, adder_latency = gen_adder(path, cnt_width, cnt_width, subtract=True)
@@ -3332,7 +3347,7 @@ def gen_slicer(path, input_width=48, output_width=16, input_base=None, max_offse
     in_str = str(input_width - 1)
     out_str = str(output_width - 1)
 
-    ctrl_bits = ret_num_bitsU(max_offset)
+    ctrl_bits = np.max((ret_num_bitsU(max_offset), 1))
 
     diff_bits = 0 if input_base is None else input_base - output_width
     ctrl_str = str(ctrl_bits - 1)
@@ -3712,10 +3727,12 @@ def gen_log_conv(path, combined_table, altera=False, tuser_width=0, tlast=False,
     (fifo_file, fifo_name) = gen_axi_fifo(path, tuser_width=tuser_width, tlast=tlast,
                                           almost_full=True, ram_style='distributed', prefix='')
     print(fifo_file)
-
-    (_, dsp_name) = gen_dsp48E1(path, name='log_mac', opcode='A*B+C', a_width=output_width, b_width=input_width // 2 + 1, areg=2,
-                                breg=2, mreg=1, preg=1, use_ce=False, use_pcout=False, c_width=interp_width + 1, 
-                                p_msb=interp_width - 1, p_lsb=0)
+    if altera:
+        dsp_name = altera_madd(path)
+    else:
+        (_, dsp_name) = gen_dsp48E1(path, name='log_mac', opcode='A*B+C', a_width=output_width, b_width=input_width // 2 + 1, areg=2,
+                                    breg=2, mreg=1, preg=1, use_ce=False, use_pcout=False, c_width=interp_width + 1, 
+                                    p_msb=interp_width - 1, p_lsb=0)
 
     with open(file_name, 'w') as fh:
         fh.write('\n')
@@ -3996,7 +4013,7 @@ def gen_axi_fifo(path, tuser_width=0, tlast=False, almost_full=False, almost_emp
     delay_msb = None
     delay_bits = None
     if max_delay > 0:
-        delay_bits = ret_num_bitsU(max_delay)
+        delay_bits = np.max((ret_num_bitsU(max_delay), 1))
         delay_msb = delay_bits - 1
 
     out_cnt = count or (almost_full) or (almost_empty)
@@ -4028,15 +4045,14 @@ def gen_axi_fifo(path, tuser_width=0, tlast=False, almost_full=False, almost_emp
         fh.write('    \n')
         fh.write('    input s_axis_tvalid,\n')
         fh.write('    input [DATA_WIDTH-1:0] s_axis_tdata,\n')
-        fh.write('    output s_axis_tready,\n')
         if tlast is True:
             fh.write('    input s_axis_tlast,\n')
         if tuser_width > 0:
             fh.write('    input [TUSER_WIDTH-1:0] s_axis_tuser,\n')
-
+        fh.write('    output s_axis_tready,\n')
         if max_delay > 0:
             fh.write('    input [{}:0] delay,\n'.format(delay_msb))
-        fh.write('\n')
+            fh.write('\n')
         if almost_full:
             fh.write('    output almost_full,\n')
         if almost_empty:

@@ -157,10 +157,10 @@ def comp_opmodes_e2(opcode, areg, breg, rnd=False):
     # W Mux Settings
     if rnd:
         opmode += 1 << 8
-    elif len(re.findall(r'c', opcode, re.IGNORECASE)) > 1:
+    elif len(re.findall(r'\bc\b', opcode, re.IGNORECASE)) > 1:
         # multiple occurences of C
         opmode += 3 << 7
-    elif len(re.findall(r'p', opcode, re.IGNORECASE)) > 1:
+    elif len(re.findall(r'\bp\b', opcode, re.IGNORECASE)) > 1:
         # multiple occurences of P
         opmode += 1 << 7
 
@@ -243,8 +243,7 @@ def comp_opmodes_e2(opcode, areg, breg, rnd=False):
     elif re.search(r'\ba\b|\bacin\b', opcode, re.IGNORECASE) is not None:
         inmode = inmode & 13
 
-    # if A XOR B | (NOT A AND NOT B)
-    if axorb or (not apres and not bpres):
+    if not apres and ((amultsel == 'A' and not use_dport) or (amultsel == 'AD' and use_dport)):
         inmode += 2
 
     if areg == 1:
@@ -311,24 +310,23 @@ def ret_opcode_params(opcode, rnd=False):
         int_dict['use_preadd'] = True
         int_dict['use_dport'] = True
 
-    test1 = re.search(r'\bp\b&\bpcin\b', opcode, re.IGNORECASE)
-    test2 = re.search(r'>>', opcode, re.IGNORECASE)
-    if test1 is not None and test2 is None:
-        int_dict['use_2pports'] = True
+    p_test = re.search(r'\bp\b', opcode, re.IGNORECASE) is not None
+    pcin_test = re.search(r'\bpcin\b', opcode, re.IGNORECASE) is not None
+    shift_test = re.search(r'>>', opcode, re.IGNORECASE) is not None
+    a_test = re.search(r'\ba\b', opcode, re.IGNORECASE) is not None
+    b_test = re.search(r'\bb\b', opcode, re.IGNORECASE) is not None
+    c_test = re.search(r'\bc\b', opcode, re.IGNORECASE) is not None
+    d_test = re.search(r'\bd\b', opcode, re.IGNORECASE) is not None
 
-    if re.search(r'\ba\b', opcode, re.IGNORECASE) is not None:
-        int_dict['use_aport'] = True
+    int_dict['use_2pports'] = p_test and pcin_test and not shift_test
 
-    if re.search(r'\bb\b', opcode, re.IGNORECASE) is not None:
-        int_dict['use_bport'] = True
+    int_dict['use_aport'] = a_test
+    int_dict['use_bport'] = b_test
+    int_dict['use_cport'] = c_test
 
-    if re.search(r'\bc\b', opcode, re.IGNORECASE) is not None:
-        int_dict['use_cport'] = True
-
-    if re.search(r'\bd\b', opcode, re.IGNORECASE) is not None:
-        int_dict['use_dport'] = True
-        int_dict['use_preadd'] = True
-        int_dict['use_mult'] = True
+    int_dict['use_dport'] = True if d_test else int_dict['use_dport']
+    int_dict['use_preadd'] = True if d_test else int_dict['use_preadd']
+    int_dict['use_mult'] = True if d_test else int_dict['use_mult']
 
     if re.search(r'\bacin\b', opcode, re.IGNORECASE) is not None:
         int_dict['use_acin'] = True
@@ -369,24 +367,23 @@ def ret_opcode_params_e2(opcode, rnd=False):
     if re.search('-ACIN', opcode, re.IGNORECASE) is not None:
         int_dict['use_dport'] = True
 
-    test1 = re.search(r'\bp\b&\bpcin\b', opcode, re.IGNORECASE)
-    test2 = re.search(r'>>', opcode, re.IGNORECASE)
-    if test1 is not None and test2 is None:
-        int_dict['use_2pports'] = True
+    p_test = re.search(r'\bp\b', opcode, re.IGNORECASE) is not None
+    pcin_test = re.search(r'\bpcin\b', opcode, re.IGNORECASE) is not None
+    shift_test = re.search(r'>>', opcode, re.IGNORECASE) is not None
+    a_test = re.search(r'\ba\b', opcode, re.IGNORECASE) is not None
+    b_test = re.search(r'\bb\b', opcode, re.IGNORECASE) is not None
+    c_test = re.search(r'\bc\b', opcode, re.IGNORECASE) is not None
+    d_test = re.search(r'\bd\b', opcode, re.IGNORECASE) is not None
 
-    if re.search(r'\ba\b', opcode, re.IGNORECASE) is not None:
-        int_dict['use_aport'] = True
+    int_dict['use_2pports'] = p_test and pcin_test and not shift_test
 
-    if re.search(r'\bb\b', opcode, re.IGNORECASE) is not None:
-        int_dict['use_bport'] = True
+    int_dict['use_aport'] = a_test
+    int_dict['use_bport'] = b_test
+    int_dict['use_cport'] = c_test
 
-    if re.search(r'\bc\b', opcode, re.IGNORECASE) is not None:
-        int_dict['use_cport'] = True
-
-    if re.search(r'\bd\b', opcode, re.IGNORECASE) is not None:
-        int_dict['use_dport'] = True
-        int_dict['use_preadd'] = True
-        int_dict['use_mult'] = True
+    int_dict['use_dport'] = True if d_test else int_dict['use_dport']
+    int_dict['use_preadd'] = True if d_test else int_dict['use_preadd']
+    int_dict['use_mult'] = True if d_test else int_dict['use_mult']
 
     # if re.search(r'\bb\b', opcode, re.IGNORECASE) is not None:
     if re.search(r'\bb\*b\b|\ba\*a\b', opcode, re.IGNORECASE) is not None:
@@ -396,7 +393,8 @@ def ret_opcode_params_e2(opcode, rnd=False):
         int_dict['use_acin'] = True
     if re.search(r'\bbcin\b', opcode, re.IGNORECASE) is not None:
         int_dict['use_bcin'] = True
-    if re.search(r'\bpcin\b', opcode, re.IGNORECASE) is not None:
+
+    if pcin_test:
         int_dict['use_pcin'] = True
 
     if re.search(r'\bcarrin\b', opcode, re.IGNORECASE) is not None:
@@ -407,9 +405,8 @@ def ret_opcode_params_e2(opcode, rnd=False):
         int_dict['use_aport'] = False
         int_dict['use_bport'] = False
 
-    # if rounding then must use cport and carryin.
+    # if rounding then must use carryin.
     if rnd:
-        # int_dict['use_cport'] = True
         int_dict['use_carryin'] = True
 
     return int_dict
@@ -507,7 +504,7 @@ def gen_dsp48E1(path, name, opcode='A*B', a_width=25, b_width=18, c_width=48, d_
 
     pcin = 'pcin' if use_pcin_port else '48\'d0'
     a_val = 'a_s' if (use_aport or use_concat) else '30\'d0'
-    b_val = 'b_s' if (use_bport or use_concat) else '18\'d1'
+    b_val = 'b_s' if (use_bport or use_concat) else '18\'d0'
     c_val = 'c_s' if use_cport else '48\'d0'
     d_val = 'd_s' if use_dport else '25\'d0'
     acin = 'acin' if use_acin_port else '30\'d0'
@@ -647,6 +644,7 @@ def gen_dsp48E1(path, name, opcode='A*B', a_width=25, b_width=18, c_width=48, d_
     else:
         p_width = 48
 
+    c_constant = 0
     if rnd:
         assert(use_cport is not True), 'User cannot use c-port when rounding'
         c_constant = 2**(p_lsb - 1) - 1
@@ -1117,7 +1115,7 @@ def gen_dsp48E2(path, name, opcode='A*B', a_width=27, b_width=18, c_width=48, d_
 
     pcin = 'pcin' if use_pcin_port else '48\'d0'
     a_val = 'a_s' if (use_aport or use_concat) else '30\'d0'
-    b_val = 'b_s' if (use_bport or use_concat) else '18\'d1'
+    b_val = 'b_s' if (use_bport or use_concat) else '18\'d0'
     c_val = 'c_s' if use_cport else '48\'d0'
     d_val = 'd_s' if use_dport else '27\'d0'
     acin = 'acin' if use_acin_port else '30\'d0'
@@ -1255,6 +1253,7 @@ def gen_dsp48E2(path, name, opcode='A*B', a_width=27, b_width=18, c_width=48, d_
     else:
         p_width = 48
 
+    c_constant = 0
     if rnd:
         assert(use_cport is not True), 'User cannot use c-port when rounding'
         c_constant = int(2**(p_lsb - 1) - 1)
@@ -1357,7 +1356,7 @@ def gen_dsp48E2(path, name, opcode='A*B', a_width=27, b_width=18, c_width=48, d_
         fh.write('\n')
         fh.write('wire overflow, underflow;\n')
         if multi_opcode:
-            fh.write('wire [{}:0] opcode_s;'.format(opcode_msb))
+            fh.write('wire [{}:0] opcode_s;\n'.format(opcode_msb))
         if infer_logic:
             gen_regs(fh, prefix='a_d', cnt=areg_logic, sp='', msb=29)
             gen_regs(fh, prefix='b_d', cnt=breg_logic, sp='', msb=17)
@@ -1561,7 +1560,7 @@ def gen_dsp48E2(path, name, opcode='A*B', a_width=27, b_width=18, c_width=48, d_
         fh.write('    .UNDERFLOW(underflow), // 1-bit output: Underflow in add/acc output\n')
         fh.write('    // Data: 4-bit (each) output: Data Ports\n')
         fh.write('    .CARRYOUT(), // 4-bit output: Carry output\n')
-        p_word = 'p_s' if rnd else 'p'
+        p_word = 'p_s' if rnd or p_slice else 'p'
         fh.write('    .P({}), //-- 48-bit output: Primary data output\n'.format(p_word))
         fh.write('    // Cascade: 30-bit (each) input: Cascade Ports\n')
         fh.write('    .ACIN({}), // 30-bit input: A cascade data input\n'.format(acin))

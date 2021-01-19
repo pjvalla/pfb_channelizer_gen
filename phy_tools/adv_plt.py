@@ -17,7 +17,7 @@ from bokeh.models import HoverTool
 from holoviews import opts
 import panel as pp
 import param
-from phy_tools.plt_utils import waterfall_spec, gen_psd, win_list, num_list
+from wavephy.plt_utils import waterfall_spec, gen_psd, win_list, num_list
 
 from subprocess import check_output, CalledProcessError, DEVNULL
 try:
