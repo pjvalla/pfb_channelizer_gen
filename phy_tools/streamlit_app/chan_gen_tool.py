@@ -1,19 +1,20 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from phy_tools.channelizer import Channelizer, gen_exp_shifter, gen_input_buffer, gen_circ_buffer, gen_pfb, gen_downselect
-from phy_tools.channelizer import gen_final_cnt, gen_output_buffer, populate_fil_table, gen_mux, gen_mask_files, gen_tones_vec
-from phy_tools.channelizer import gen_chan_top, gen_chan_tb
-import phy_tools.fp_utils as fp_utils
+from wavephy.channelizer import Channelizer, gen_exp_shifter, gen_input_buffer, gen_circ_buffer, gen_pfb, gen_downselect
+from wavephy.channelizer import gen_final_cnt, gen_output_buffer, populate_fil_table, gen_mux, gen_mask_files, gen_tones_vec
+from wavephy.channelizer import gen_chan_top, gen_chan_tb
+import wavephy.fp_utils as fp_utils
 from gen_buffers import gen_inbuff_logic, gen_inbuff1x_logic, gen_circbuff_logic, gen_reader, gen_writer
-import phy_tools.adv_pfb as adv_filter
-from phy_tools.plotly_utils import plotly_time_helper
-from phy_tools.gen_xfft import gen_xfft_xci
-from phy_tools.plt_utils import find_pwr
+import wavephy.adv_pfb as adv_filter
+from wavephy.plotly_utils import plotly_time_helper
+from wavephy.gen_xfft import gen_xfft_xci
+from wavephy.plt_utils import find_pwr
 import SessionState
 
 import pandas as pd
 from collections import OrderedDict
+import ipdb
 
 from shutil import  make_archive
 import base64
@@ -73,7 +74,6 @@ offset_orig = OrderedDict([(8, .5), (16, .5), (32, .5), (64, .5), (128, .5), (25
 session_state = SessionState.get(K_terms=K_orig, msb_terms=msb_orig, offset_terms=offset_orig)
 
 def update_chan_obj(session_state, taps_per_phase, gen_2X, max_fft):
-    print(max_fft)
     try:
         return Channelizer(M=max_fft, taps_per_phase=taps_per_phase, gen_2X=gen_2X, qvec=QVEC,
                            qvec_coef=QVEC_COEF, fc_scale=fc_scale, tbw_scale=tbw_scale, taps=None, 
@@ -130,9 +130,9 @@ if opt_button:
 
 # @st.cache
 def update_psd(session_state, taps_per_phase, gen_2X, max_fft):
-    print(session_state.K_terms)
-    print(session_state.msb_terms)
-    print(session_state.offset_terms)
+    # print(session_state.K_terms)
+    # print(session_state.msb_terms)
+    # print(session_state.offset_terms)
     chan_obj = update_chan_obj(session_state, taps_per_phase, gen_2X, max_fft)
     fft_size = 2048
     minx = -4. / max_fft
@@ -216,24 +216,24 @@ fig = plotly_time_helper(psd_df, opacity=[.8] * 2, miny=min_db, maxy=10, index_s
                             labelsize=20, titlesize=30, xlabel='\u03A0 rads/sec', ylabel='dB', 
                             subplot_title=('Fil PSD',), minx=minx, maxx=maxx) #, pwr_pts=-3.01)
 
-
 resp = psd_df['PSD'].to_numpy()
-
 lidx, ridx = find_pwr(resp, pwr_pt)
-resp_offset_lidx = int(ridx + (ridx - lidx) * (tbw_scale / fc_scale))
-resp_offset_ridx = int(lidx - (ridx - lidx) * (tbw_scale / fc_scale))
+pass_right = psd_df['Omega'].iloc[ridx]
+pass_left = psd_df['Omega'].iloc[lidx]
+# pass_bw = int(bin_width * len(resp))
+tbw_right = pass_right + bin_width * tbw_scale
+tbw_left = pass_left - bin_width * tbw_scale
 
-stop_atten = np.max(resp[resp_offset_lidx:])
-# print(resp[resp_offset:])
+tbw_left_idx = np.where(psd_df['Omega'] < tbw_left)[0][-1]
+stop_atten = np.max(resp[tbw_left_idx-30: tbw_left_idx])
 x_left = psd_df['Omega'].iloc[lidx]
 x_right = psd_df['Omega'].iloc[ridx]
-# ann_x = .20 * (maxx - minx) + minx
 fig.add_shape(type="line", x0=x_left, y0=-1000, x1=x_left, y1=1000,
                 line=dict(color="forestgreen", width=2, dash='dash'))
 fig.add_shape(type="line", x0=x_right, y0=-1000, x1=x_right, y1=1000,
                 line=dict(color="forestgreen", width=2, dash='dash'))
-tbw_left = psd_df['Omega'].iloc[resp_offset_lidx]
-tbw_right = psd_df['Omega'].iloc[resp_offset_ridx]
+# tbw_left = psd_df['Omega'].iloc[resp_offset_lidx]
+# tbw_right = psd_df['Omega'].iloc[resp_offset_ridx]
 trans_bw = tbw_right - x_right 
 fig.add_shape(type="line", x0=tbw_left, y0=-1000, x1=tbw_left, y1=1000,
                 line=dict(color="magenta", width=2, dash='dash'))
