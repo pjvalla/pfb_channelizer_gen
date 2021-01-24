@@ -119,7 +119,7 @@ gen_button = st.sidebar.button('Generate Verilog')
 def opt_params(max_fft, taps_per_phase, gen_2X, fc_scale, tbw_scale):
     # st.write("Optimizing Taps = {}".format(opt_button))
     return populate_fil_table(start_size=max_fft, end_size=max_fft, fc_scale=fc_scale, 
-                              taps_per_phase=taps_per_phase, gen_2X=gen_2X, tbw_scale=tbw_scale, freqz_pts=2000)
+                              taps_per_phase=taps_per_phase, gen_2X=gen_2X, tbw_scale=tbw_scale, freqz_pts=1000)
 
 if opt_button:
     K_term, msb_term, offset_term = opt_params(max_fft, taps_per_phase, gen_2X, fc_scale, tbw_scale)

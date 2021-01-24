@@ -2064,8 +2064,8 @@ def gen_output_buffer(Mmax=512, path=IP_PATH):
     cnt_out = vgen.gen_aligned_cnt(path, cnt_width=cnt_width, tuser_width=0, tlast=False, start_sig=True, use_af=True,
                                    almost_full_thresh=16, fifo_addr_width=5)
     print(cnt_out)
-    _, dsp_name = vgenx.gen_dsp48E1(path, 'output_add', opcode='A+D', a_width=QVEC[0], d_width=QVEC[0], dreg=1, areg=1, creg=2, mreg=1, breg=0, preg=1, rnd=True, p_msb=QVEC[0], p_lsb=1)
-    print(dsp_name)
+    # _, dsp_name = vgenx.gen_dsp48E1(path, 'output_add', opcode='A+D', a_width=QVEC[0], d_width=QVEC[0], dreg=1, areg=1, creg=2, mreg=1, breg=0, preg=1, rnd=True, p_msb=QVEC[0], p_lsb=1)
+    # print(dsp_name)
     print("==========================")
     print("")
 
