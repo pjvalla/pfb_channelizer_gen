@@ -215,6 +215,10 @@ def gen_cordic(path, qvec_in=(16, 15), output_width=16, num_iters=6, function='v
     fifo_addr_width = ret_addr_width(tot_latency * 2)
     almost_full_thresh = 1 << (fifo_addr_width - 1)
 
+    funcs = ['A*B', '-A*B']
+    (dsp_file, dsp_name) = gen_dsp48E1(path, mod_name, opcode=funcs, areg=2, breg=2, use_ce=False)  # latency 4 
+    print(dsp_name)
+
     with open(file_name, "w") as fh:
 
         fh.write('/*****************************************************************************/\n')
@@ -256,11 +260,11 @@ def gen_cordic(path, qvec_in=(16, 15), output_width=16, num_iters=6, function='v
             fh.write('reg [TUSER_MSB:0] tuser_reg[0:{}];\n'.format(tot_latency - 1))
         if tlast:
             fh.write('reg [{}:0] tlast_d;\n'.format(tot_latency - 1))
-        for ii in range(1, num_iters):
+        for ii in range(1, num_iters + 1):
             fh.write('reg signed [{}:0] x_{}, next_x_{};\n'.format(int_msb, ii, ii))
-        for ii in range(1, num_iters):
+        for ii in range(1, num_iters + 1):
             fh.write('reg signed [{}:0] y_{}, next_y_{};\n'.format(int_msb, ii, ii))
-        for ii in range(1, num_iters):
+        for ii in range(1, num_iters + 1):
             fh.write('reg signed [{}:0] z_{}, next_z_{};\n'.format(int_msb, ii, ii))
         fh.write('\n')
         fh.write('wire signed [{}:0] x_0, y_0, z_0;\n'.format(int_msb))
@@ -286,9 +290,9 @@ def gen_cordic(path, qvec_in=(16, 15), output_width=16, num_iters=6, function='v
         # fh.write('wire ce;\n')
         # fh.write('reg ce_d0;\n')
         fh.write('\n')
-        atan_values = [np.arctan(2. ** -n) for n in range(num_iters - 1)]
+        atan_values = [np.arctan(2. ** -n) for n in range(num_iters)]
         atan_fi = fp_utils.sfi(atan_values, qvec=angle_qvec)
-        for ii in range(num_iters - 1):
+        for ii in range(num_iters):
             fh.write('wire [{}:0] atan_val_{} = {}\'d{};\n'.format(int_msb, ii, output_width, atan_fi.vec[ii]))
         fh.write('\n')
         fh.write('reg opcode0, next_opcode0;\n')
@@ -308,7 +312,7 @@ def gen_cordic(path, qvec_in=(16, 15), output_width=16, num_iters=6, function='v
         fh.write('assign s_axis_tready = ~almost_full;\n')
         # fh.write('assign ce = send_data;\n')
         # fh.write('assign m_axis_tvalid = occ_reg[{}];\n'.format(tot_latency - 1))
-        fh.write('assign fifo_tdata = {{z_{}, x_{}}};\n'.format(num_iters - 1, num_iters - 1))
+        fh.write('assign fifo_tdata = {{z_{}, x_{}}};\n'.format(num_iters, num_iters))
         pad = 18 - input_width
         if pad > 0:
             tup_value0 = (pad, input_width - 1, input_width - 1)
@@ -331,20 +335,6 @@ def gen_cordic(path, qvec_in=(16, 15), output_width=16, num_iters=6, function='v
         fh.write('assign y_0 = y_corr[{}:{}];\n'.format(mult_msb, rindx))
         fh.write('assign z_0 = angle_d4;\n')
         fh.write('\n')
-        # fh.write('always @*\n')
-        # fh.write('begin\n')
-        # # fh.write('    next_occ_reg = occ_reg;\n')
-        # fh.write('    next_angle_d0 = angle_d0;\n')
-        # fh.write('    next_angle_d1 = angle_d1;\n')
-        # fh.write('    next_angle_d2 = angle_d2;\n')
-        # fh.write('    next_angle_d3 = angle_d3;\n')
-        # fh.write('    if (send_data == 1\'b1) begin\n')
-        # fh.write('        next_angle_d0 = angle;\n')
-        # fh.write('        next_angle_d1 = angle_d0;\n')
-        # fh.write('        next_angle_d2 = angle_d1;\n')
-        # fh.write('        next_angle_d3 = angle_d2;\n')
-        # fh.write('    end\n')
-        # fh.write('end\n')
         fh.write('\n')
         fh.write('always @(posedge clk)\n')
         fh.write('begin\n')
@@ -356,7 +346,6 @@ def gen_cordic(path, qvec_in=(16, 15), output_width=16, num_iters=6, function='v
         fh.write('    end\n')
         fh.write('end\n')
         fh.write('\n')
-
         fh.write('always @(posedge clk)\n')
         fh.write('begin\n')
         fh.write('    angle_d1 <= angle;\n')
@@ -373,9 +362,6 @@ def gen_cordic(path, qvec_in=(16, 15), output_width=16, num_iters=6, function='v
         fh.write('    valid_d <= {{valid_d[{}:0], take_data}};\n'.format(tot_latency - 2))
         fh.write('end\n')
         fh.write('// two functions A*B and -A*B\n')
-        funcs = ['A*B', '-A*B']
-        (dsp_file, dsp_name) = gen_dsp48E1(path, mod_name, opcode=funcs, areg=2, breg=2, use_ce=False)
-        print(dsp_name)
         fh.write('// latency = 4\n')
         fh.write('{} x_mac (\n'.format(dsp_name))
         fh.write('  .clk(clk),\n')
@@ -396,16 +382,16 @@ def gen_cordic(path, qvec_in=(16, 15), output_width=16, num_iters=6, function='v
         fh.write('\n')
         fh.write('always @(posedge clk)\n')
         fh.write('begin\n')
-        for ii in range(1, num_iters):
+        for ii in range(1, num_iters + 1):
             fh.write('    x_{} <= next_x_{};\n'.format(ii, ii))
         fh.write('\n')
-        for ii in range(1, num_iters):
+        for ii in range(1, num_iters + 1):
             fh.write('    y_{} <= next_y_{};\n'.format(ii, ii))
         fh.write('\n')
-        for ii in range(1, num_iters):
+        for ii in range(1, num_iters + 1):
             fh.write('    z_{} <= next_z_{};\n'.format(ii, ii))
         fh.write('\n')
-        fh.write('    a_term <= next_a_term;\n')
+        # fh.write('    a_term <= next_a_term;\n')
         fh.write('    b_termx <= next_b_termx;\n')
         fh.write('    b_termy <= next_b_termy;\n')
         fh.write('    opcode0 <= next_opcode0;\n')
@@ -415,13 +401,13 @@ def gen_cordic(path, qvec_in=(16, 15), output_width=16, num_iters=6, function='v
         fh.write('always @*\n')
         fh.write('begin\n')
         fh.write('\n')
-        for ii in range(1, num_iters):
+        for ii in range(1, num_iters + 1):
             fh.write('    next_x_{} = x_{};\n'.format(ii, ii))
         fh.write('\n')
-        for ii in range(1, num_iters):
+        for ii in range(1, num_iters + 1):
             fh.write('    next_y_{} = y_{};\n'.format(ii, ii))
         fh.write('\n')
-        for ii in range(1, num_iters):
+        for ii in range(1, num_iters + 1):
             fh.write('    next_z_{} = z_{};\n'.format(ii, ii))
         fh.write('\n')
         fh.write('    next_opcode0 = opcode0;\n')
@@ -449,7 +435,7 @@ def gen_cordic(path, qvec_in=(16, 15), output_width=16, num_iters=6, function='v
         fh.write('    end\n')
         fh.write('\n')
         # fh.write('    if (send_data == 1\'b1) begin\n')
-        for ii in range(1, num_iters):
+        for ii in range(1, num_iters + 1):
             fh.write('    if (y_{}[{}] == 1\'b1) begin\n'.format(ii - 1, int_msb))
             fh.write('        next_x_{} = x_{} - (y_{} >>> {});\n'.format(ii, ii - 1, ii - 1, ii))
             fh.write('        next_y_{} = y_{} + (x_{} >>> {});\n'.format(ii, ii - 1, ii - 1, ii))

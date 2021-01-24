@@ -25,7 +25,7 @@ except CalledProcessError:
 
 use_dict = {'use_mult': False, 'use_2pports': False, 'use_concat': False, 'use_aport': False, 'use_bport': False,
             'use_cport': False, 'use_acin': False, 'use_bcin': False, 'use_pcin': False, 'use_dport': False,
-            'use_carryin': False, 'use_carrycascin': False, 'use_preadd': False}
+            'use_carryin': False, 'use_carrycascin': False, 'use_preadd': False, 'use_dinput':False}
 
 def comp_opmodes(opcode, areg, breg, rnd=False):
 
@@ -43,7 +43,6 @@ def comp_opmodes(opcode, areg, breg, rnd=False):
 
     num_pterms = len(re.findall(r'\bp\b', opcode, re.IGNORECASE))
     num_cterms = len(re.findall(r'\bc\b', opcode, re.IGNORECASE))
-    # ipdb.set_trace()
     # X MUX Settings.
     if use_mult:
         opmode += 1
@@ -214,7 +213,6 @@ def comp_opmodes_e2(opcode, areg, breg, rnd=False):
 
     amultsel = 'AD' if use_dport else 'A'
     inmode = 0
-
     bpres = re.search(r'\bb\b|\bbcin\b', opcode, re.IGNORECASE) is not None
     apres = re.search(r'\ba\b|\bacin\b', opcode, re.IGNORECASE) is not None
     axorb = apres ^ bpres
@@ -323,6 +321,7 @@ def ret_opcode_params(opcode, rnd=False):
     int_dict['use_aport'] = a_test
     int_dict['use_bport'] = b_test
     int_dict['use_cport'] = c_test
+    int_dict['use_dinput'] = d_test
 
     int_dict['use_dport'] = True if d_test else int_dict['use_dport']
     int_dict['use_preadd'] = True if d_test else int_dict['use_preadd']
@@ -380,6 +379,7 @@ def ret_opcode_params_e2(opcode, rnd=False):
     int_dict['use_aport'] = a_test
     int_dict['use_bport'] = b_test
     int_dict['use_cport'] = c_test
+    int_dict['use_dinput'] = d_test
 
     int_dict['use_dport'] = True if d_test else int_dict['use_dport']
     int_dict['use_preadd'] = True if d_test else int_dict['use_preadd']
@@ -436,7 +436,7 @@ def gen_dsp48E1(path, name, opcode='A*B', a_width=25, b_width=18, c_width=48, d_
             fh.write('    input carryin,\n')
         if use_carrycascin:
             fh.write('    input carrycascin,\n')
-        if use_dport:
+        if use_dinput:
             fh.write('    input [{}:0] d,\n'.format(d_msb))
         if use_cport:
             fh.write('    input [{}:0] c,\n'.format(c_msb))
@@ -467,6 +467,7 @@ def gen_dsp48E1(path, name, opcode='A*B', a_width=25, b_width=18, c_width=48, d_
     bport_list = []
     cport_list = []
     dport_list = []
+    dinput_list = []
     acin_list = []
     bcin_list = []
     pcin_list = []
@@ -482,6 +483,7 @@ def gen_dsp48E1(path, name, opcode='A*B', a_width=25, b_width=18, c_width=48, d_
         bport_list.append(temp_dict['use_bport'])
         cport_list.append(temp_dict['use_cport'])
         dport_list.append(temp_dict['use_dport'])
+        dinput_list.append(temp_dict['use_dinput'])
         acin_list.append(temp_dict['use_acin'])
         bcin_list.append(temp_dict['use_bcin'])
         pcin_list.append(temp_dict['use_pcin'])
@@ -495,6 +497,7 @@ def gen_dsp48E1(path, name, opcode='A*B', a_width=25, b_width=18, c_width=48, d_
     use_bport = np.any(bport_list)
     use_cport = np.any(cport_list)
     use_dport = np.any(dport_list)
+    use_dinput = np.any(dinput_list)
     use_acin_port = np.any(acin_list)
     use_bcin_port = np.any(bcin_list)
     use_pcin_port = np.any(pcin_list)
@@ -506,7 +509,7 @@ def gen_dsp48E1(path, name, opcode='A*B', a_width=25, b_width=18, c_width=48, d_
     a_val = 'a_s' if (use_aport or use_concat) else '30\'d0'
     b_val = 'b_s' if (use_bport or use_concat) else '18\'d0'
     c_val = 'c_s' if use_cport else '48\'d0'
-    d_val = 'd_s' if use_dport else '25\'d0'
+    d_val = 'd_s' if use_dinput else '25\'d0'
     acin = 'acin' if use_acin_port else '30\'d0'
     bcin = 'bcin' if use_bcin_port else '18\'d0'
     carryin = 'carryin' if use_carryin else '1\'b0'
@@ -593,7 +596,7 @@ def gen_dsp48E1(path, name, opcode='A*B', a_width=25, b_width=18, c_width=48, d_
             creg = 1
             c_val = 'c_d{}'.format(creg_logic - 1)
 
-    if not use_dport:
+    if not use_dinput:
         dreg = 0
     else:
         if dreg > 1:
@@ -614,7 +617,10 @@ def gen_dsp48E1(path, name, opcode='A*B', a_width=25, b_width=18, c_width=48, d_
             areg = concatreg
             breg = concatreg
 
-    adreg = 1 if (use_preadd and areg == 2) else 0
+    adreg = 0
+    if (use_preadd):
+        adreg = 1
+        areg = np.max((0, areg - 1)) 
 
     a_msb = a_width - 1
     b_msb = b_width - 1
@@ -634,10 +640,7 @@ def gen_dsp48E1(path, name, opcode='A*B', a_width=25, b_width=18, c_width=48, d_
     b = '{}\'d0'.format(b_width)
     c = '{}\'d0'.format(c_width)
     d = '25\'d0'
-    dport_str = 'FALSE'
-    if use_dport:
-        dport_str = 'TRUE'
-
+    dport_str = 'TRUE' if use_dport else 'FALSE'
     p_slice = True if (p_msb is not None and p_lsb is not None) else False
     if rnd or p_slice:
         p_width = p_msb - p_lsb + 1
@@ -733,7 +736,7 @@ def gen_dsp48E1(path, name, opcode='A*B', a_width=25, b_width=18, c_width=48, d_
             fh.write('wire [17:0] b_s;\n')
         if use_cport:
             fh.write('wire [47:0] c_s;\n')
-        if use_dport:
+        if use_dinput:
             fh.write('wire [24:0] d_s;\n')
         if rnd or p_slice:
             fh.write('wire [47:0] p_s;\n')
@@ -774,7 +777,7 @@ def gen_dsp48E1(path, name, opcode='A*B', a_width=25, b_width=18, c_width=48, d_
                 else:
                     fh.write('assign b_s = b;\n')
 
-        if use_dport:
+        if use_dinput:
             if d_width < 25:
                 fh.write('assign d_s = {{{{{}{{d[{}]}}}}, d}};\n'.format(25 - d_width, d_width - 1))
             else:
@@ -1044,7 +1047,7 @@ def gen_dsp48E2(path, name, opcode='A*B', a_width=27, b_width=18, c_width=48, d_
             fh.write('    input carryin,\n')
         if use_carrycascin:
             fh.write('    input carrycascin,\n')
-        if use_dport:
+        if use_dinput:
             fh.write('    input [{}:0] d,\n'.format(d_msb))
         if use_cport:
             fh.write('    input [{}:0] c,\n'.format(c_msb))
@@ -1076,6 +1079,7 @@ def gen_dsp48E2(path, name, opcode='A*B', a_width=27, b_width=18, c_width=48, d_
     bport_list = []
     cport_list = []
     dport_list = []
+    dinput_list = []
     acin_list = []
     bcin_list = []
     pcin_list = []
@@ -1091,6 +1095,7 @@ def gen_dsp48E2(path, name, opcode='A*B', a_width=27, b_width=18, c_width=48, d_
         bport_list.append(temp_dict['use_bport'])
         cport_list.append(temp_dict['use_cport'])
         dport_list.append(temp_dict['use_dport'])
+        dinput_list.append(temp_dict['use_dinput'])
         acin_list.append(temp_dict['use_acin'])
         bcin_list.append(temp_dict['use_bcin'])
         pcin_list.append(temp_dict['use_pcin'])
@@ -1104,6 +1109,7 @@ def gen_dsp48E2(path, name, opcode='A*B', a_width=27, b_width=18, c_width=48, d_
     use_bport = np.any(bport_list)
     use_cport = np.any(cport_list)
     use_dport = np.any(dport_list)
+    use_dinput = np.any(dinput_list)
     use_acin_port = np.any(acin_list)
     use_bcin_port = np.any(bcin_list)
     use_pcin_port = np.any(pcin_list)
@@ -1117,7 +1123,7 @@ def gen_dsp48E2(path, name, opcode='A*B', a_width=27, b_width=18, c_width=48, d_
     a_val = 'a_s' if (use_aport or use_concat) else '30\'d0'
     b_val = 'b_s' if (use_bport or use_concat) else '18\'d0'
     c_val = 'c_s' if use_cport else '48\'d0'
-    d_val = 'd_s' if use_dport else '27\'d0'
+    d_val = 'd_s' if use_dinput else '27\'d0'
     acin = 'acin' if use_acin_port else '30\'d0'
     bcin = 'bcin' if use_bcin_port else '18\'d0'
     carryin = 'carryin' if use_carryin else '1\'b0'
@@ -1177,7 +1183,6 @@ def gen_dsp48E2(path, name, opcode='A*B', a_width=27, b_width=18, c_width=48, d_
     infer_logic = True if (input_regs + alumode_logic + inmode_logic + opmode_logic) > 0 else False
     infer_logic = True if multi_opcode else infer_logic
     patdet = "PATDET" if sat_accum else "NO_PATDET"
-
     if use_concat:
         if concatreg > 2:
             breg_logic = concatreg - 2
@@ -1225,7 +1230,11 @@ def gen_dsp48E2(path, name, opcode='A*B', a_width=27, b_width=18, c_width=48, d_
             areg = concatreg
             breg = concatreg
 
-    adreg = 1 if (use_preadd and areg == 2) else 0
+
+    adreg = 0
+    if (use_preadd):
+       adreg = 1
+       areg = np.max((0, areg -1))
     a_msb = a_width - 1
     b_msb = b_width - 1
     c_msb = c_width - 1
@@ -1243,10 +1252,7 @@ def gen_dsp48E2(path, name, opcode='A*B', a_width=27, b_width=18, c_width=48, d_
     b = '{}\'d0'.format(b_width)
     c = '{}\'d0'.format(c_width)
     d = '27\'d0'
-    dport_str = 'FALSE'
-    if use_dport:
-        dport_str = 'TRUE'
-
+    dport_str = 'TRUE' if use_dport else 'FALSE'
     p_slice = True if (p_msb is not None and p_lsb is not None) else False
     if rnd or p_slice:
         p_width = p_msb - p_lsb + 1
@@ -1327,7 +1333,6 @@ def gen_dsp48E2(path, name, opcode='A*B', a_width=27, b_width=18, c_width=48, d_
 
 
     with open(file_name, "w") as fh:
-
         fh.write('module {}\n'.format(module_name))
         fh.write('(\n')
         if use_reset:
@@ -1348,7 +1353,7 @@ def gen_dsp48E2(path, name, opcode='A*B', a_width=27, b_width=18, c_width=48, d_
             fh.write('wire [17:0] b_s;\n')
         if use_cport:
             fh.write('wire [47:0] c_s;\n')
-        if use_dport:
+        if use_dinput:
             fh.write('wire [24:0] d_s;\n')
         if rnd or p_slice:
             fh.write('wire [47:0] p_s;\n')

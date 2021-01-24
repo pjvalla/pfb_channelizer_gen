@@ -1584,14 +1584,12 @@ class PolyTimingRec(object):
 
         # need lines for HW
         self.fil_gain = fil_gain
-
         # regenerate dmf
-        # self.dmf = np.reshape(self.poly_dfil, (-1,), order='F')
 
     def gen_fix_filters(self, qvec_coef, qvec, qvec_out=None):
         """
             Helper function that converts matched filter, MF, and differential matched filter, dMF, into fixed point 
-            implementaion
+            implementation
         """
         qvec_out = qvec if qvec_out is None else qvec_out
         mf_fi, mf_msb, max_tuple, taps_gain = gen_fixed_poly_filter(self.poly_fil, qvec_coef, qvec, qvec_out, self.P)

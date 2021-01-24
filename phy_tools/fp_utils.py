@@ -210,13 +210,17 @@ class Fi(object):
         """
             Converts vector to 2's complement binary values.
         """
+        orig_shape = np.shape(self.vec)
+        vec = self.vec.flatten()
         num_chars = self.qvec[0]
         if self.comp:
-            real_vals = [dec_to_bin(np.real(value).astype(np.int), num_chars) for value in self.vec]
-            imag_vals = [dec_to_bin(np.imag(value).astype(np.int), num_chars) for value in self.vec]
-            return [real_val + (",j" + imag_val) for (real_val, imag_val) in zip(real_vals, imag_vals)]
+            real_vals = [dec_to_bin(np.real(value).astype(np.int), num_chars) for value in vec]
+            imag_vals = [dec_to_bin(np.imag(value).astype(np.int), num_chars) for value in vec]
+            ret_val = [real_val + (",j" + imag_val) for (real_val, imag_val) in zip(real_vals, imag_vals)]
         else:
-            return [dec_to_bin(value, num_chars) for value in self.vec]
+            ret_val =  [dec_to_bin(value, num_chars) for value in vec]
+
+        return np.reshape(ret_val, orig_shape)
 
     @property
     def udec(self):
@@ -245,13 +249,17 @@ class Fi(object):
         """
             Converts vector to 2's complement hexadecimal values.
         """
+        orig_shape = np.shape(self.vec)
         num_chars = int(np.ceil(self.qvec[0] / 4.))
+        vec = self.vec.flatten()
         if self.comp:
-            real_vals = dec_to_hex(np.real(self.vec).astype(np.int), num_chars)
-            imag_vals = dec_to_hex(np.imag(self.vec).astype(np.int), num_chars)
-            return [real_val + (",j" + imag_val) for (real_val, imag_val) in zip(real_vals, imag_vals)]
+            real_vals = dec_to_hex(np.real(vec).astype(np.int), num_chars)
+            imag_vals = dec_to_hex(np.imag(vec).astype(np.int), num_chars)
+            ret_val =  [real_val + (",j" + imag_val) for (real_val, imag_val) in zip(real_vals, imag_vals)]
         else:
-            return dec_to_hex(self.vec, num_chars)
+            ret_val = dec_to_hex(vec, num_chars)
+
+        return np.reshape(ret_val, orig_shape)
 
     @property
     def len(self):

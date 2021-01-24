@@ -558,7 +558,6 @@ def gen_mac_filter(path, prefix='', qvec=(16, 15), qvec_coef=(25, 24),tuser_widt
 
         lat_tuple = (lat_msb - 1, clat_msb - 1)
         fh.write('assign dsp_valid = (cycling_d[{}] == 1\'b1 && cnt_reset_d[{}] == 1\'b1) ? 1\'b1 : 1\'b0;\n'.format(*lat_tuple))
-        # fh.write('assign cycling_o = cycling_d[{}];\n'.format(clat_msb))
         if not last_mac:
             fh.write('assign opcode_o = opcode;\n')
             fh.write('assign wr_addr_s = wr_addr_d[{}];\n'.format(clat_msb))
@@ -581,7 +580,7 @@ def gen_mac_filter(path, prefix='', qvec=(16, 15), qvec_coef=(25, 24),tuser_widt
             fh.write('        rd_addr <= 8\'d0;\n')
             fh.write('        rd_cnt <= 8\'d0;\n')
             fh.write('        cycling <= 1\'b0;\n')
-            fh.write('        startup <= 1\'b0;\n')
+            fh.write('        startup <= 1\'b1;\n')
         for ii in range(dsp_lat):
             fh.write('        data_reg[{}] <= 0;\n'.format(ii))
         if tuser_width:
@@ -634,15 +633,17 @@ def gen_mac_filter(path, prefix='', qvec=(16, 15), qvec_coef=(25, 24),tuser_widt
                 fh.write('            next_data_latch = s_axis_tdata;\n')
             if tuser_width:
                 fh.write('            next_tuser_latch = s_axis_tuser;\n')
-            fh.write('            if (wr_addr_reset) begin\n')
+            fh.write('            if (wr_addr_reset | startup) begin\n')
             fh.write('                next_wr_addr = 8\'d0;\n')
             fh.write('            end else begin\n')
             fh.write('                next_wr_addr = wr_addr + 1;\n')
             fh.write('            end\n')
             fh.write('        end\n')
             fh.write('\n')
-            fh.write('        if (take_data) begin\n')
-            fh.write('            next_rd_addr = wr_addr + 1;\n')
+            fh.write('        if (startup | wr_addr_reset) begin\n')
+            fh.write('            next_rd_addr = 8\'d1;\n')
+            fh.write('        end else if (take_data) begin\n')
+            fh.write('            next_rd_addr = wr_addr + 2;\n')
             fh.write('        end else if (addr_reset) begin\n')
             fh.write('            next_rd_addr = 8\'d0;\n')
             fh.write('        end else begin\n')
@@ -650,6 +651,8 @@ def gen_mac_filter(path, prefix='', qvec=(16, 15), qvec_coef=(25, 24),tuser_widt
             fh.write('        end\n')
             fh.write('    end\n')
             fh.write('end\n')
+
+            
             fh.write('\n')
         fh.write('always @*\n')
         fh.write('begin\n')
@@ -735,7 +738,7 @@ def gen_mac_filter(path, prefix='', qvec=(16, 15), qvec_coef=(25, 24),tuser_widt
         fh.write('    .wea(taps_we),\n')
         fh.write('    .addra(taps_addr),\n')
         fh.write('    .dia(taps_data),\n')
-        fh.write('    .addrb(rd_addr),\n')
+        fh.write('    .addrb(rd_cnt[{}:0]),\n'.format(tap_addr_width - 1))
         fh.write('    .dob(taps)\n')
         fh.write(');\n')
         fh.write('\n')
