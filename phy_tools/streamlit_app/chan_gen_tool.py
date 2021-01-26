@@ -60,12 +60,12 @@ chan_type = st.sidebar.radio("Channelizer Type", ('M', 'M/2'))
 # opt_taps = st.checkbox("Optimize Filter Taps")
 min_db = st.sidebar.selectbox("Plot Min DB", db_list, index=3)
 fc_scale = st.sidebar.number_input("Cut off Frequency (Proportional to Bin Width)", value=.8, min_value=0.5, max_value=1.0)
-tbw_scale = st.sidebar.number_input("Transition Bandwidth (Proportional to Bin Width) - M/2 Designs should relax specs", value=.5, min_value=0.20, max_value=1.0)
+tbw_scale = st.sidebar.number_input("Transition Bandwidth (Proportional to Bin Width) - M/2 Designs should relax specs", value=.20, min_value=0.20, max_value=1.0)
 
-K_orig = OrderedDict([(8, 8.363989999999983), (16, 8.363989999999983), (32, 8.363989999999983),
-                      (64, 8.363989999999983), (128, 8.363989999999983), (256, 8.363989999999983), (512, 8.363989999999983),
-                      (1024, 8.363989999999983), (2048, 8.363989999999983), (4096, 8.363989999999983),
-                      (8192, 8.363989999999983), (16384, 8.363989999999983), (32768, 8.363989999999983), (65536, 8.363989999999983)])
+K_orig = OrderedDict([(8, 9.169244999999984), (16, 9.169244999999984), (32, 9.169244999999984),
+                      (64, 9.169244999999984), (128, 9.169244999999984), (256, 9.169244999999984), (512, 9.169244999999984),
+                      (1024, 9.169244999999984), (2048, 9.169244999999984), (4096, 9.169244999999984),
+                      (8192, 9.169244999999984), (16384, 9.169244999999984), (32768, 9.169244999999984), (65536, 9.169244999999984)])
 msb_orig = OrderedDict([(8, 39), (16, 39), (32, 39), (64, 39), (128, 39), (256, 39), (512, 39), (1024, 39), 
                          (2048, 39), (4096, 39), (8192, 39), (16384, 39), (32768, 39), (65536, 39)])
 offset_orig = OrderedDict([(8, .5), (16, .5), (32, .5), (64, .5), (128, .5), (256, .5), (512, 0.5), (1024, 0.5), 
@@ -205,7 +205,7 @@ psd_df = update_psd(session_state, taps_per_phase, gen_2X, max_fft)
 
 minx = -4. / max_fft
 maxx = 4. / max_fft
-pwr_pt = -3.01
+pwr_pt = -3.01 * 2
 
 binl = -1. / max_fft
 binr = 1. / max_fft
@@ -214,7 +214,7 @@ bin_width = binr - binl
 # 'Discrete Freq.'
 fig = plotly_time_helper(psd_df, opacity=[.8] * 2, miny=min_db, maxy=10, index_str='sig_idx', x_name='Omega', y_name='PSD',
                             labelsize=20, titlesize=30, xlabel='\u03A0 rads/sec', ylabel='dB', 
-                            subplot_title=('Fil PSD',), minx=minx, maxx=maxx) #, pwr_pts=-3.01)
+                            subplot_title=('PSD',), minx=minx, maxx=maxx) #, pwr_pts=-3.01)
 
 resp = psd_df['PSD'].to_numpy()
 lidx, ridx = find_pwr(resp, pwr_pt)
@@ -223,6 +223,8 @@ pass_left = psd_df['Omega'].iloc[lidx]
 # pass_bw = int(bin_width * len(resp))
 tbw_right = pass_right + bin_width * tbw_scale
 tbw_left = pass_left - bin_width * tbw_scale
+bound_left = binl - .5 * bin_width
+bound_right = binr + .5 * bin_width
 
 tbw_left_idx = np.where(psd_df['Omega'] < tbw_left)[0][-1]
 stop_atten = np.max(resp[tbw_left_idx-30: tbw_left_idx])
@@ -243,13 +245,13 @@ fig.add_shape(type="line", x0=binl, y0=-1000, x1=binl,
                 y1=1000, line=dict(color="darkgreen", width=2, dash='dash'))
 fig.add_shape(type="line", x0=binr, y0=-1000, x1=binr,
                 y1=1000, line=dict(color="darkgreen", width=2, dash='dash'))
-fig.add_shape(type="line", x0=2*binl, y0=-1000, x1=2*binl,
+fig.add_shape(type="line", x0=bound_left, y0=-1000, x1=bound_left,
                 y1=1000, line=dict(color="crimson", width=2, dash='dash'))
-fig.add_shape(type="line", x0=2*binr, y0=-1000, x1=2*binr,
+fig.add_shape(type="line", x0=bound_right, y0=-1000, x1=bound_right,
                 y1=1000, line=dict(color="crimson", width=2, dash='dash'))
 fig.add_shape(type="line", x0=-100, y0=stop_atten, x1=100, y1=stop_atten, line=dict(color="crimson",width=2, dash='dash'))
 
-offset = int((10 - min_db) * .02)
+offset = int((10 - min_db) * .03)
 fig.add_annotation(
     x=0,
     y=stop_atten + 40 + offset,
@@ -258,7 +260,7 @@ fig.add_annotation(
     text="1 Bin Width",
     font=dict(
         family='sans serif',
-        size=13,
+        size=14,
         color="darkgreen"
     ),
     align='center',
@@ -297,46 +299,45 @@ fig.add_annotation(
 
 fig.add_annotation(
     x=0,
-    y=stop_atten + 30 + offset,
+    y=stop_atten + 30,
     xref="x",
     yref="y",
-    text="2X Bin Width",
+    text="Adj. Bin Boundary",
     font=dict(
         family='sans serif',
-        size=13,
+        size=15,
         color="crimson"
     ),
     align='center',
     showarrow=False,
 )
 fig.add_annotation(
-    x=2*binl,
+    x=bound_left,
     y=stop_atten + 30,
     xref="x",
     yref="y",
     text="",
-
-    ax = 0,
-    ay = stop_atten + 30,
-    axref = "x", 
-    ayref = "y",
+    ax=bound_left * .60,
+    ay=stop_atten + 30,
+    axref="x", 
+    ayref="y",
     arrowhead = 3,
-    arrowwidth = 1.5,
+    arrowwidth = 2.0,
     arrowcolor="crimson",
     opacity=1.,
 )
 fig.add_annotation(
-    x=2*binr,
+    x=bound_right,
     y=stop_atten + 30,
     xref="x",
     yref="y",
     text="",
-    ax = .02 * binl * 2,
+    ax = bound_right * .60, 
     ay = stop_atten + 30,
     axref = "x", 
     ayref = "y",
     arrowhead = 3,
-    arrowwidth = 1.5,
+    arrowwidth = 2.0,
     arrowcolor="crimson",
     opacity=1.,
 )

@@ -1301,7 +1301,8 @@ class Channelizer(object):
         msb_terms = OrderedDict()
         for M in M_vec:
             fc = (1. / M) * fc_scale
-            trans_bw = (1./ M) * tbw_scale
+            trans_bw = (2./ M) * tbw_scale
+            print("trans_bw = {}".format(trans_bw))
             self.num_taps = M * self.taps_per_phase
             self.M = M
             filter_obj = fil_utils.LPFilter(M=M, P=M, pbr=self.pbr, sba=self.sba, num_taps=self.num_taps, fc=fc,
