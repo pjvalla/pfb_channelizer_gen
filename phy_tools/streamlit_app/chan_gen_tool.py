@@ -167,7 +167,7 @@ def gen_taps(session_state, taps_per_phase, gen_2X, max_fft):
     full_name = IP_PATH + file_name + '.p'
     path = IP_PATH
     ret_df.to_pickle(full_name)
-    st.sidebar.markdown(get_download_link(file_name + '.p', path=path, file_type='pickle'), unsafe_allow_html=True)
+    st.sidebar.markdown(get_download_link(file_name + '.p', path=None, file_type='pickle'), unsafe_allow_html=True)
 
 
 # @st.cache
