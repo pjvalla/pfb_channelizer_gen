@@ -8,6 +8,7 @@ mpmath>=1.1.0
 pandas>=1.1.5
 pylatexenc>=2.6
 dill>=0.3.2
+pip>=20.3.3
 scipy>=1.5.3
 streamlit>=0.73.0
 filter>=0.0.0.20200724
