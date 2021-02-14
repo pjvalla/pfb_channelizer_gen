@@ -2115,7 +2115,7 @@ def gen_pfb(chan_obj, path=IP_PATH, fs=6.4E6):  # Mmax=512, pfb_msb=40, M=512, t
     print("K terms = {}".format(chan_obj.K))
     print("fc_scale = {}".format(FC_SCALE))
     pfb_fil = chan_obj.poly_fil_fi
-    pfb_reshape = np.reshape(pfb_fil, (1, -1), order='F').flatten()
+    pfb_reshape = pfb_fil.T.flatten  #, (1, -1), order='F').flatten()
     qvec_int = (QVEC_COEF[0], 0)
     taps_fi = fp_utils.ret_dec_fi(pfb_reshape, qvec_int)
 

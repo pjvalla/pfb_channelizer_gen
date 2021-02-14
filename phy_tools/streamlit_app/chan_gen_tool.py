@@ -10,8 +10,8 @@ import phy_tools.adv_pfb as adv_filter
 from phy_tools.plotly_utils import plotly_time_helper
 from phy_tools.gen_xfft import gen_xfft_xci
 from phy_tools.plt_utils import find_pwr
+from phy_tools.fp_utils import dec_to_hex
 import SessionState
-import ipdb
 
 import pandas as pd
 from collections import OrderedDict
@@ -41,7 +41,7 @@ def get_download_link(file_name, path=None, file_type='zip'):
     with open(file_name, 'rb') as fin:
         bytes_var = fin.read()
         b64 = base64.b64encode(bytes_var).decode()
-    return f'<a href="data:file/zip;base64,{b64}" download="{file_name}">Download "{file_type}" file</a>'
+    return f'<a href="data:file/zip;base64,{b64}" download="{file_name}">Download {file_type} file</a>'
 
 QVEC = (16, 15)
 QVEC_COEF = (25, 24)
@@ -152,11 +152,20 @@ def update_psd(session_state, taps_per_phase, gen_2X, max_fft):
 
 def gen_taps(session_state, taps_per_phase, gen_2X, max_fft):
     ret_df = pd.DataFrame()
+    max_taps = max_fft * taps_per_phase
     for fft_size in fft_list:
     # generate all taps upto max_fft.
         chan_obj = update_chan_obj(session_state, taps_per_phase, gen_2X, fft_size)
-        data = {'FFT Size':fft_size, 'Float Taps':chan_obj.taps, 'Fixed Taps':chan_obj.taps_fi.flatten(),
-                'Float Taps Reshaped':chan_obj.poly_fil.flatten()[0], 'Fixed Taps Reshaped': chan_obj.poly_fil_fi.flatten()[0]}
+        pad = max_taps - len(chan_obj.taps)
+        taps = np.pad(chan_obj.taps, (0, pad), mode='constant', constant_values=0.)
+        fixed_taps = np.pad(chan_obj.taps_fi.flatten(), (0, pad), mode='constant', constant_values=0)
+        hex_taps = dec_to_hex(fixed_taps, 8)  # 32 bit values
+        poly_taps = np.reshape(taps, (max_fft, -1), order='C').T.flatten()
+        fixed_poly_taps = np.reshape(fixed_taps, (max_fft, -1), order='C').T.flatten()
+        hex_poly_taps = np.reshape(hex_taps, (max_fft, -1), order='C').T.flatten()
+        data = {'FFT Size':fft_size, 'Float Taps':taps, 'Fixed Taps':fixed_taps, 'Hex Taps':hex_taps,
+                'Float Taps Reshaped':poly_taps, 'Fixed Taps Reshaped': fixed_poly_taps, 'Hex Taps Reshaped':hex_poly_taps}
+
         temp_df = pd.DataFrame(data)
         temp_df = temp_df.set_index('FFT Size')
         ret_df = ret_df.append(temp_df)

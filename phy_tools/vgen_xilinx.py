@@ -540,7 +540,7 @@ def gen_dsp48E1(path, name, opcode='A*B', a_width=25, b_width=18, c_width=48, d_
     opmode_logic = 0
     opmode_delay = 0
     alumode_delay = 0
-    inmode_delay = areg
+    inmode_delay = np.min((areg, 1))
     if use_concat:
         inmode_delay = np.max((inmode_delay, concatreg))
     if use_cport:
@@ -555,7 +555,7 @@ def gen_dsp48E1(path, name, opcode='A*B', a_width=25, b_width=18, c_width=48, d_
         # there is an implied 1 tick delay due to the multi_opcode mux.
         opmode_logic = np.max((opmode_delay - 1, 1))
         opmode_reg = np.max((opmode_delay - opmode_logic, 0))
-        inmode_reg = np.min((inmode_delay, 1))
+        inmode_reg = np.min((inmode_delay - 1, 1))
         inmode_logic = inmode_delay - inmode_reg
         alumode_delay = opmode_delay
         alumode_reg = opmode_reg
@@ -677,6 +677,10 @@ def gen_dsp48E1(path, name, opcode='A*B', a_width=25, b_width=18, c_width=48, d_
         alumodes.append(temp2)
         carryin_sels.append(temp3)
 
+    inmode_reg = 1 if all(ele == inmodes[0] for ele in inmodes) else inmode_reg 
+    alumode_reg = 1 if all(ele == alumodes[0] for ele in alumodes) else alumode_reg 
+    opmode_reg = 1 if all(ele == opmodes[0] for ele in opmodes) else opmode_reg
+
     if opmode_logic:
         opmode_str = 'opmode_d{}'.format(opmode_logic - 1)
     else:
@@ -686,7 +690,7 @@ def gen_dsp48E1(path, name, opcode='A*B', a_width=25, b_width=18, c_width=48, d_
             opmode_str = '7\'d{}'.format(opmodes[0])
 
     if inmode_logic:
-        inmode_str = 'inmode_d{}'.format(inmode_delay - 2)
+        inmode_str = 'inmode_d{}'.format(inmode_logic - 1)
     else:
         if multi_opcode:
             inmode_str = 'inmode'
@@ -1155,7 +1159,7 @@ def gen_dsp48E2(path, name, opcode='A*B', a_width=27, b_width=18, c_width=48, d_
     opmode_logic = 0
     opmode_delay = 0
     alumode_delay = 0
-    inmode_delay = areg
+    inmode_delay = np.min((areg, 1))
     if use_concat:
         inmode_delay = np.max((inmode_delay, concatreg))
     if use_cport:
@@ -1170,7 +1174,7 @@ def gen_dsp48E2(path, name, opcode='A*B', a_width=27, b_width=18, c_width=48, d_
         # there is an implied 1 tick delay due to the multi_opcode mux.
         opmode_logic = np.max((opmode_delay - 1, 1))
         opmode_reg = np.max((opmode_delay - opmode_logic, 0))
-        inmode_reg = np.min((inmode_delay, 1))
+        inmode_reg = np.min((inmode_delay - 1, 1))
         inmode_logic = inmode_delay - inmode_reg
         alumode_delay = opmode_delay
         alumode_reg = opmode_reg
@@ -1298,6 +1302,10 @@ def gen_dsp48E2(path, name, opcode='A*B', a_width=27, b_width=18, c_width=48, d_
         bmultsels.append(temp5)
         preaddsels.append(temp6)
 
+    inmode_reg = 1 if all(ele == inmodes[0] for ele in inmodes) else inmode_reg 
+    alumode_reg = 1 if all(ele == alumodes[0] for ele in alumodes) else alumode_reg 
+    opmode_reg = 1 if all(ele == opmodes[0] for ele in opmodes) else opmode_reg
+
     if opmode_logic:
         opmode_str = 'opmode_d{}'.format(opmode_logic - 1)
     else:
@@ -1307,7 +1315,7 @@ def gen_dsp48E2(path, name, opcode='A*B', a_width=27, b_width=18, c_width=48, d_
             opmode_str = '9\'d{}'.format(opmodes[0])
 
     if inmode_logic:
-        inmode_str = 'inmode_d{}'.format(inmode_delay - 2)
+        inmode_str = 'inmode_d{}'.format(inmode_logic - 1)
     else:
         if multi_opcode:
             inmode_str = 'inmode'
