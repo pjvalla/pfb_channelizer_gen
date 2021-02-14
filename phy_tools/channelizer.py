@@ -2212,7 +2212,7 @@ def gen_tones_vec(tone_vec, M=512, offset=0, path=SIM_PATH):
 
     scale = np.max(tone_vec)
     phase_vec = np.array(tone_vec) / (scale * np.pi)
-    num_samps = 8192 * 256
+    num_samps = 8192 * 128
     tones = [gen_comp_tone(num_samps, tone_value, phase_value) for (tone_value, phase_value) in zip(tones, phase_vec)]
     sig = np.sum(tones, 0)
     sig = sig / (2. * np.max(np.abs(sig)))

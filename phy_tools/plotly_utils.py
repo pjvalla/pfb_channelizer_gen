@@ -230,13 +230,9 @@ def plotly_psd_helper(df, fft_size=1024, pwr_pts=None, freq_pts=None, plot_time=
 
     miny = np.min(ymins) - 10 if miny is None else miny
     maxy = np.max(ymaxs) + 10 if maxy is None else maxy
-    
     # if time dataframe was passed in.
     time_flag = time_df is not None
     time_df = df if time_flag is False else time_df
-
-    num_plots = 1 + plot_time
-
     # if signal is a tuple or a list of tuples, then wvec and resp has been calculated.  Just plot.
     if plot_time:
         psd_tpl = (2, 1)

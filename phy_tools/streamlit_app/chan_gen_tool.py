@@ -11,6 +11,7 @@ from phy_tools.plotly_utils import plotly_time_helper
 from phy_tools.gen_xfft import gen_xfft_xci
 from phy_tools.plt_utils import find_pwr
 import SessionState
+import ipdb
 
 import pandas as pd
 from collections import OrderedDict
@@ -28,17 +29,19 @@ def zipdir(path, ziph):
             ziph.write(os.path.join(root, file))
 
 
-def get_zip_download_link(path, file_name):
+def get_download_link(file_name, path=None, file_type='zip'):
     """Generates a link allowing the data in a given panda dataframe to be downloaded
     in:  dataframe
     out: href string
     """
     # b64 = base64.b64encode(csv.encode()).decode()  # some strings <-> bytes conversions necessary here
     # href = f'<a href="data:file/zip;base64,{b64}">Download zip file</a>'
+
+    file_name = path + file_name if path is not None else file_name
     with open(file_name, 'rb') as fin:
         bytes_var = fin.read()
         b64 = base64.b64encode(bytes_var).decode()
-    return f'<a href="data:file/zip;base64,{b64}" download="{file_name}">Download zip file</a>'
+    return f'<a href="data:file/zip;base64,{b64}" download="{file_name}">Download {file_type} file</a>'
 
 QVEC = (16, 15)
 QVEC_COEF = (25, 24)
@@ -115,10 +118,12 @@ st.sidebar.markdown("""
 st.sidebar.markdown('<p class="big-font">Click Optimize Filter after updating filter settings</p>', unsafe_allow_html=True)
 opt_button = st.sidebar.button('Optimize Filter')
 gen_button = st.sidebar.button('Generate Verilog')
+gen_taps_button = st.sidebar.button('Generate Taps -- Pandas pickle')
 
 def opt_params(max_fft, taps_per_phase, gen_2X, fc_scale, tbw_scale):
     # st.write("Optimizing Taps = {}".format(opt_button))
-    return populate_fil_table(start_size=max_fft, end_size=max_fft, fc_scale=fc_scale, 
+    m_fft = 64  #max_fft if max_fft < 128 else 64
+    return populate_fil_table(start_size=m_fft, end_size=m_fft, fc_scale=fc_scale, 
                               taps_per_phase=taps_per_phase, gen_2X=gen_2X, tbw_scale=tbw_scale, freqz_pts=1000)
 
 if opt_button:
@@ -144,12 +149,37 @@ def update_psd(session_state, taps_per_phase, gen_2X, max_fft):
     data_dict = {'Omega': omega, 'PSD':resp, 'sig_idx': 0}
     return pd.DataFrame(data_dict)
 
+
+def gen_taps(session_state, taps_per_phase, gen_2X, max_fft):
+    ret_df = pd.DataFrame()
+    for fft_size in fft_list:
+    # generate all taps upto max_fft.
+        chan_obj = update_chan_obj(session_state, taps_per_phase, gen_2X, fft_size)
+        data = {'FFT Size':fft_size, 'Float Taps':chan_obj.taps, 'Fixed Taps':chan_obj.taps_fi.flatten(),
+                'Float Taps Reshaped':chan_obj.poly_fil.flatten()[0], 'Fixed Taps Reshaped': chan_obj.poly_fil_fi.flatten()[0]}
+        temp_df = pd.DataFrame(data)
+        temp_df = temp_df.set_index('FFT Size')
+        ret_df = ret_df.append(temp_df)
+        if fft_size == max_fft:
+            break
+        # ret_df = ret_df.append
+    file_name = 'taps'
+    full_name = IP_PATH + file_name + '.p'
+    path = IP_PATH
+    ret_df.to_pickle(full_name)
+    st.sidebar.markdown(get_download_link(file_name + '.p', path=path, file_type='pickle'), unsafe_allow_html=True)
+
+
 # @st.cache
 def update_stem(session_state, taps_per_phase, gen_2X, max_fft):
     chan_obj = update_chan_obj(session_state, taps_per_phase, gen_2X, max_fft)
     taps = chan_obj.taps
     data_dict = {'Taps': taps, 'sig_idx': 0}
     return pd.DataFrame(data_dict)
+
+if gen_taps_button:
+    gen_taps(session_state, taps_per_phase, gen_2X, max_fft)
+
 
 if gen_button:
     # check if IP_PATH exists -- create it if it doesn't
@@ -192,9 +222,11 @@ if gen_button:
     # copyfile('./grc_word_writer.sv', IP_PATH + '/grc_word_writer.sv')
 
     file_name = 'verilog_{}_{}_{}'.format(max_fft, taps_per_phase, chan_str)
-    full_name = IP_PATH + '/' + file_name
+    # full_name = IP_PATH + '/' + file_name
+    path = IP_PATH
     make_archive(file_name, 'zip', IP_PATH)
-    st.sidebar.markdown(get_zip_download_link('./', file_name + '.zip'), unsafe_allow_html=True)
+    print(file_name)
+    st.sidebar.markdown(get_download_link(file_name + '.zip', file_type='zip'), unsafe_allow_html=True)
 else:
     pass
     # st.write('New Channelizer')
@@ -371,15 +403,6 @@ fig.add_annotation(
     opacity=0.7
 )
 fig.update_shapes(dict(xref='x', yref='y'))
-# fig.add_vline(x=psd_df['Omega'].iloc[lidx], line_width=3, line_dash="dash",
-#               line_color="green", row=0, col=0)
-# fig.add_vline(x=psd_df['Omega'].iloc[ridx], line_width=3, line_dash="dash",
-#               line_color="green", row=0, col=0)
-# pwr_pts = -3.01,
-# find 3 dB cutoff .
-# print(psd_df.columns)
-# print(psd_df.PSD)
-
 
 fig.update_layout(autosize=False, width=900, height=550, margin=dict(l=20, r=40, b=40, t=70))
 st.plotly_chart(fig)
@@ -388,6 +411,12 @@ st.plotly_chart(fig)
 
 stem_df = update_stem(session_state, taps_per_phase, gen_2X, max_fft)
 try:
+    # ipdb.set_trace()
+    num_rows = len(stem_df)
+    if num_rows > 1024:
+        div = num_rows // 1024
+        stem_df = stem_df.iloc[::div, :]
+
     fig = plotly_time_helper(stem_df, opacity=[.8] * 2, index_str='sig_idx', y_name='Taps', stem_plot=False, miny=-.5,
                              labelsize=20, titlesize=30, xlabel='Tap Index', ylabel='Amplitude', subplot_title=('Taps',))
 
