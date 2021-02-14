@@ -41,7 +41,7 @@ def get_download_link(file_name, path=None, file_type='zip'):
     with open(file_name, 'rb') as fin:
         bytes_var = fin.read()
         b64 = base64.b64encode(bytes_var).decode()
-    return f'<a href="data:file/zip;base64,{b64}" download="{file_name}">Download {file_type} file</a>'
+    return f'<a href="data:file/zip;base64,{b64}" download="{file_name}">Download "{file_type}" file</a>'
 
 QVEC = (16, 15)
 QVEC_COEF = (25, 24)
@@ -168,7 +168,7 @@ def gen_taps(session_state, taps_per_phase, gen_2X, max_fft):
     full_name = file_name + '.p'
     path = IP_PATH
     ret_df.to_pickle(full_name)
-    st.sidebar.markdown(get_download_link(file_name + '.p', path=None, file_type='pickle'), unsafe_allow_html=True)
+    st.sidebar.markdown(get_download_link(full_name, path=None, file_type='pickle'), unsafe_allow_html=True)
 
 
 # @st.cache
