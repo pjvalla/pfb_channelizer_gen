@@ -2641,7 +2641,7 @@ def get_args():
     if args.rtl_sim_infile is not None:
         if args.rtl_sim_infile.lower() != 'default':
             input_file = args.rtl_sim_infile
-        gen_test_sig(input_file)
+        # gen_test_sig(input_file)
 
     if args.check_stim is not None:
         if args.check_stim.lower() != 'default':

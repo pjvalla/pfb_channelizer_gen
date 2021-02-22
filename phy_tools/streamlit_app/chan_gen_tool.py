@@ -63,7 +63,7 @@ chan_type = st.sidebar.radio("Channelizer Type", ('M', 'M/2'))
 # opt_taps = st.checkbox("Optimize Filter Taps")
 min_db = st.sidebar.selectbox("Plot Min DB", db_list, index=3)
 fc_scale = st.sidebar.number_input("Cut off Frequency (Proportional to Bin Width)", value=.8, min_value=0.5, max_value=1.0)
-tbw_scale = st.sidebar.number_input("Transition Bandwidth (Proportional to Bin Width) - M/2 Designs should relax specs", value=.20, min_value=0.20, max_value=1.0)
+tbw_scale = st.sidebar.number_input("Transition Bandwidth (Proportional to Bin Width) - M/2 Designs should relax specs", value=.30, min_value=0.20, max_value=1.0)
 
 K_orig = OrderedDict([(8, 9.169244999999984), (16, 9.169244999999984), (32, 9.169244999999984),
                       (64, 9.169244999999984), (128, 9.169244999999984), (256, 9.169244999999984), (512, 9.169244999999984),
@@ -211,8 +211,9 @@ if gen_button:
     gen_downselect(max_fft, IP_PATH)
     gen_final_cnt(IP_PATH)
     fft_name = gen_xfft_xci(IP_PATH, max_fft)
-    tones = gen_mask_files([max_fft], percent_active=.125, path=IP_PATH)
-    gen_tones_vec(tones[0], M=max_fft, offset=.1 / max_fft, path=IP_PATH)
+    tones = gen_mask_files([max_fft], percent_active=.25, path=IP_PATH)
+    # generate every other tone.
+    gen_tones_vec(tones[0][::2], M=max_fft, offset=.15 / max_fft, path=IP_PATH)
 
     gen_chan_top(IP_PATH, chan_obj, shift_name, pfb_name, fft_name)
     gen_chan_tb(IP_PATH, chan_obj, len(tones[0]))
