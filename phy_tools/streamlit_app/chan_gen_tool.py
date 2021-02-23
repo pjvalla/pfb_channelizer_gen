@@ -214,9 +214,9 @@ if gen_button:
     tones = gen_mask_files([max_fft], percent_active=.25, path=IP_PATH)
     # generate every other tone.
     tone_vec = tones[0][::2]
-    step = .65 / len(tone_vec)
-    tone_vec = [tone + (.05 + i*step) / max_fft for i, tone in enumerate(tone_vec)]
-    gen_tones_vec(tone_vec, M=max_fft, offset=0, path=IP_PATH)
+    tstep = .65 / (len(tone_vec) * max_fft)
+    offset_vec = [i * tstep  for i in range(len(tone_vec))]
+    gen_tones_vec(tone_vec, M=max_fft, offset=offset_vec, path=IP_PATH)
 
     gen_chan_top(IP_PATH, chan_obj, shift_name, pfb_name, fft_name)
     gen_chan_tb(IP_PATH, chan_obj, len(tones[0]))

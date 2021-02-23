@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import matplotlib.animation as manimation
 from matplotlib.animation import MovieWriter
+from collections.abc import Iterable
 
 from mpl_toolkits.mplot3d import axes3d, Axes3D
 import numpy as np
@@ -2205,10 +2206,11 @@ def gen_tones(M=512, lidx=30, ridx=31, offset=0, path=SIM_PATH):
     plot_psd_helper(sig_fi.vec[:900], title='tone truth', miny=-100, savefig=True, plot_time=True, path=path)
     write_complex_samples(sig_fi.vec, path + 'sig_tones_{}.bin'.format(M), False, 'h', big_endian=True)
 
-def gen_tones_vec(tone_vec, M=512, offset=0, path=SIM_PATH):
+def gen_tones_vec(tone_vec, M=512, offset=0., path=SIM_PATH):
 
     omega = np.roll(gen_freq_vec(M)['w'], -M // 2)
-    tones = np.array([omega[tone_idx] for tone_idx in tone_vec]) + offset
+    offset = [offset] * len(tone_vec) if not isinstance(offset, Iterable) else offset
+    tones = np.array([omega[tone_idx] + off_value for tone_idx, off_value in zip(tone_vec, offset)])
 
     scale = np.max(tone_vec)
     phase_vec = np.array(tone_vec) / (scale * np.pi)
