@@ -52,6 +52,8 @@ num_list = [str(i) for i in range(1, 33)]
 
 channel_dict = dict.fromkeys(['start_bin', 'end_bin', 'start_slice', 'end_slice'])
 
+marker_list = ['o', 'v', '^', '<', '>', '8', 's', 'p', 'P', '*', 'h', "H"]
+
 linestyle_dict = dict([
      ('solid', 'solid'),      # Same as (0, ()) or '-'
      ('dotted', 'dotted'),    # Same as (0, (1, 1)) or '.'
@@ -143,11 +145,11 @@ def parse_title(title):
     return LatexNodes2Text().latex_to_text(title)
 
 
-def attach_legend(ax, fontsize=12):
+def attach_legend(ax, fontsize=12, ncol=1):
     """
         Helper function for modifying and attaching legends to a plot.
     """
-    legend = ax.legend(loc='upper right', fancybox=True, framealpha=0.75, fontsize=fontsize, frameon=True)
+    legend = ax.legend(loc='upper right', fancybox=True, framealpha=0.75, fontsize=fontsize, frameon=True, ncol=ncol)
     frame = legend.get_frame()
     frame.set_facecolor('wheat')
 
@@ -409,9 +411,7 @@ def plot_psd_helper(signal, fft_size=1024, pwr_pts=None, freq_pts=None, label=No
     if tuple_flag:
         wvec = signal[0]
         resp = signal[1]
-        # for omega, amp in zip(signal[0], signal[1]):
-        #     wvec.append(omega)
-        #     resp.append(amp)
+
     else:
         for sig in signal:
             # user has provided frequency vector and response vector
@@ -508,7 +508,7 @@ def gen_psd(in_vec, return_onesided=False, fft_size=1024, noverlap=None, nperseg
 def plot_time_helper(time_sig, title=None, label=None, format_str=None, linestyle=None, linewidth=None, x_vec=None, min_n_ticks=4,
                      color=None, marker=None, savefig=False, plot_on=False, markersize=None, miny=None, maxy=None, minx=None, maxx=None,
                      xlabel=None, ylabel=None, labelsize=14, legendsize=14, titlesize=16, alpha=None, ax1=None, ax2=None, xprec=None, yprec=None,
-                     add_legend=True, dpi=dpi, plt_size=(8., 6.), path='./', pickle_fig=False):
+                     add_legend=True, dpi=dpi, plt_size=(8., 6.), path='./', pickle_fig=False, legend_cols=1):
     """
         Helper function for quickly plotting real or complex sample streams. Uses
         most commonly used defaults.
@@ -575,12 +575,12 @@ def plot_time_helper(time_sig, title=None, label=None, format_str=None, linestyl
     plot_time_sig(ax1, real_sig, legend_temp, title=title, x_vec=x_vec, miny=miny, maxy=maxy, minx=minx, maxx=maxx,
                   format_str=format_str, linestyle=linestyle, color=color, marker=marker, markersize=markersize,
                   linewidth=linewidth, min_n_ticks=min_n_ticks, xlabel=xlabel, ylabel=ylabel, labelsize=labelsize,
-                  titlesize=titlesize, alpha=alpha, xprec=xprec, yprec=yprec)
+                  titlesize=titlesize, alpha=alpha, xprec=xprec, yprec=yprec, legend_cols=legend_cols)
     if ax2 is not None:
         plot_time_sig(ax2, comp_sig, legend_temp, title=title, x_vec=x_vec, miny=miny, maxy=maxy, minx=minx,
                       maxx=maxx, format_str=format_str, linestyle=linestyle, color=color, marker=marker, markersize=markersize,
                       linewidth=linewidth, min_n_ticks=min_n_ticks, xlabel=xlabel, ylabel=ylabel, labelsize=labelsize,
-                      titlesize=titlesize, alpha=alpha, xprec=xprec, yprec=yprec)
+                      titlesize=titlesize, alpha=alpha, xprec=xprec, yprec=yprec, legend_cols=legend_cols)
 
     if label is not None and add_legend is True:
         # generate legend string.
@@ -704,7 +704,8 @@ def plt_ax(ax, zip_iter, xprec, yprec, min_n_ticks, minx, maxx, miny, maxy, tick
 
 def plot_time_sig(ax, time_sig, label=None, title=r'$\sf{Real}$', x_vec=None, format_str=None, linestyle=None, color=None,
                   marker=None, markersize=None, linewidth=None, miny=None, maxy=None, minx=None, maxx=None, min_n_ticks=4,
-                  xlabel=None, ylabel=None, labelsize=14, legendsize=14, ticksize=8, titlesize=16, alpha=None, xprec=None, yprec=None):
+                  xlabel=None, ylabel=None, labelsize=14, legendsize=14, ticksize=8, titlesize=16, alpha=None, 
+                  xprec=None, yprec=None, legend_cols=1):
 
 
     tvalue = plot_macro(x_vec, time_sig, label=label, format_str=format_str, color=color, marker=marker,
@@ -729,7 +730,7 @@ def plot_time_sig(ax, time_sig, label=None, title=r'$\sf{Real}$', x_vec=None, fo
         return -1
 
     if label is not None:
-        attach_legend(ax, fontsize=legendsize)
+        attach_legend(ax, fontsize=legendsize, ncol=legend_cols)
     label_helper(ax, title=title, labelsize=labelsize, xlabel=xlabel, ylabel=ylabel, titlesize=titlesize)
 
     return ax, lines
@@ -772,7 +773,6 @@ def waterfall_spec(in_vec, fft_size=1024, num_avgs=4, one_side=False, normalize=
         resp_water = np.flipud(resp_water.T)
 
     return (w, resp_water)
-
 
 
 def plot_waterfall(in_vec, plot_time=False, title=None, plot_psd=False, normalize=False, plt_size=(8., 6.),
@@ -836,10 +836,10 @@ def plot_waterfall(in_vec, plot_time=False, title=None, plot_psd=False, normaliz
 
     ax_water = fig.add_subplot(gs[plot_cnt, :])
     if ytime_max is None:
-        ytime_max = 2. * np.abs(np.max(in_vec))
+        ytime_max = 1.25 * np.max(np.abs(in_vec))
 
     if ytime_min is None:
-        ytime_min = -2. * np.abs(np.max(in_vec))
+        ytime_min = -1.25 * np.max(np.abs(in_vec))
 
     if title is not None:
         window_title = parse_title(title)
@@ -1004,7 +1004,7 @@ def plot_waterfall(in_vec, plot_time=False, title=None, plot_psd=False, normaliz
 def plot_psd(ax, wvec, resp, format_str=None, title=None, label=None, min_n_ticks=4, alpha=1.,
              miny=None, maxy=None, minx=None, maxx=None, color=None, markersize=None, marker=None, linewidth=None, linestyle=None,
              pwr_pts=None, freq_pts=None, xprec=3, yprec=0, xlabel=df_str, ylabel=amp_str, labelsize=14, titlesize=16,
-             legendsize=12, ticksize=8):
+             legendsize=12, ticksize=8, legend_cols=1):
     """
         Helper method that generates a pretty Spectral plot.
     """
@@ -1078,5 +1078,30 @@ def plot_psd(ax, wvec, resp, format_str=None, title=None, label=None, min_n_tick
     plt.rc('text', usetex=False)
     plt.rc('font', family='serif')
     if label is not None:
-        attach_legend(ax, fontsize=legendsize)
+        attach_legend(ax, fontsize=legendsize, ncol=legend_cols)
 
+
+def test_run():
+
+    from phy_tools.qam_waveform import QAM_Mod
+    plt.close('all')
+
+    snr = 40
+    spb = 8
+
+    sig_obj = QAM_Mod(frame_mod='qpsk', spb=spb, snr=snr)
+    signal = sig_obj.gen_frames(5, frame_space_mean=100000, sig_bw=.5)[0]
+    #
+    plot_psd_helper(signal, normalize=True, miny=-80, savefig=True, plot_on=False, title='test psd')
+    plot_waterfall(signal, num_avgs=4)
+
+    # out_name = 'test_sig.mp4'
+    # water_obj.waterfall_scroll(signal, dpi_val=450, hist_len=20,
+    #                            plot_time=True,
+    #                            plot_psds=True, psd_max=40,
+    #                            mpeg_file=out_name)
+
+
+# if __name__ == "__main__":
+#
+#     test_run()

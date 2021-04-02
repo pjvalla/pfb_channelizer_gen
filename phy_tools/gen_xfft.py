@@ -6,7 +6,7 @@ from phy_tools.gen_utils import ret_valid_path
 from phy_tools.channelizer import calc_fft_tuser_width
 
 def gen_xfft_xci(path=None, max_fft_size=2048, arch='virtex7', device='xc7vx485t', pkg='ffg1157', speed_grade='-1',
-                 phase_factor_width=20, bram_stages=4, sw_version='2018.2'):
+                 phase_factor_width=25, bram_stages=4, sw_version='2018.2'):
 
     assert(path is not None), 'User must specify Path'
     path = ret_valid_path(path)
