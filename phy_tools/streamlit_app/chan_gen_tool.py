@@ -58,9 +58,7 @@ gen_2X = False
 # fc_scale = st.
 max_fft = st.sidebar.selectbox("Maximum Number of Channels", fft_list, index=3)
 taps_per_phase = st.sidebar.number_input("Taps Per Arm of PFB", value=16, min_value=12, max_value=64)
-# st.sidebar.slider("Taps Per Arm of the PFB", 12, 64, 16, 1)
 chan_type = st.sidebar.radio("Channelizer Type", ('M', 'M/2'))
-# opt_taps = st.checkbox("Optimize Filter Taps")
 min_db = st.sidebar.selectbox("Plot Min DB", db_list, index=3)
 fc_scale = st.sidebar.number_input("Cut off Frequency (Proportional to Bin Width)", value=.8, min_value=0.5, max_value=1.0)
 tbw_scale = st.sidebar.number_input("Transition Bandwidth (Proportional to Bin Width) - M/2 Designs should relax specs", value=.30, min_value=0.20, max_value=1.0)
@@ -138,6 +136,7 @@ def update_psd(session_state, taps_per_phase, gen_2X, max_fft):
     # print(session_state.K_terms)
     # print(session_state.msb_terms)
     # print(session_state.offset_terms)
+    # print("updating PSD")
     chan_obj = update_chan_obj(session_state, taps_per_phase, gen_2X, max_fft)
     fft_size = 2048
     minx = -4. / max_fft
@@ -418,10 +417,11 @@ fig.add_annotation(
 )
 fig.update_shapes(dict(xref='x', yref='y'))
 
+config = dict({
+    "modeBarButtonsToRemove": ['autoScale2d', 'toggleSpikelines'],
+})
 fig.update_layout(autosize=False, width=900, height=550, margin=dict(l=20, r=40, b=40, t=70))
-st.plotly_chart(fig)
-# except:
-#     pass
+st.plotly_chart(fig, config= config)
 
 stem_df = update_stem(session_state, taps_per_phase, gen_2X, max_fft)
 try:
@@ -435,7 +435,10 @@ try:
                              labelsize=20, titlesize=30, xlabel='Tap Index', ylabel='Amplitude', subplot_title=('Taps',))
 
     fig.update_layout(autosize=False, width=900, height=350, margin=dict(l=20, r=40, b=40, t=70))
-    st.plotly_chart(fig)
+    config = dict({
+        "modeBarButtonsToRemove": ['toggleSpikelines'],
+    })
+    st.plotly_chart(fig, config=config)
 except:
     pass
 
