@@ -67,6 +67,9 @@ K_orig = OrderedDict([(8, 9.169244999999984), (16, 9.169244999999984), (32, 9.16
                       (64, 9.169244999999984), (128, 9.169244999999984), (256, 9.169244999999984), (512, 9.169244999999984),
                       (1024, 9.169244999999984), (2048, 9.169244999999984), (4096, 9.169244999999984),
                       (8192, 9.169244999999984), (16384, 9.169244999999984), (32768, 9.169244999999984), (65536, 9.169244999999984)])
+
+FFT_SIZES = [value for value in K_orig.keys()]
+
 msb_orig = OrderedDict([(8, 39), (16, 39), (32, 39), (64, 39), (128, 39), (256, 39), (512, 39), (1024, 39), 
                          (2048, 39), (4096, 39), (8192, 39), (16384, 39), (32768, 39), (65536, 39)])
 offset_orig = OrderedDict([(8, .5), (16, .5), (32, .5), (64, .5), (128, .5), (256, .5), (512, 0.5), (1024, 0.5), 
@@ -126,16 +129,25 @@ def opt_params(max_fft, taps_per_phase, gen_2X, fc_scale, tbw_scale):
 
 if opt_button:
     K_term, msb_term, offset_term = opt_params(max_fft, taps_per_phase, gen_2X, fc_scale, tbw_scale)
-    session_state.K_terms = K_term
-    session_state.msb_terms = msb_term
-    session_state.offset_terms = offset_term
+    kterm = next(iter(K_term.values()))
+    msbterm = next(iter(msb_term.values()))
+    offterm = next(iter(offset_term.values()))
+    # copy terms of other sizes.
+    K_terms = []
+    msb_terms = []
+    offset_terms = []
+    for fft_size in FFT_SIZES:
+        K_terms.append((fft_size, kterm))
+        msb_terms.append((fft_size, msbterm))
+        offset_terms.append((fft_size, offterm))
+    print(K_terms)
+    session_state.K_terms = OrderedDict(K_terms)
+    session_state.msb_terms = OrderedDict(msb_terms)
+    session_state.offset_terms = OrderedDict(offset_terms)
 
 
 # @st.cache
 def update_psd(session_state, taps_per_phase, gen_2X, max_fft):
-    # print(session_state.K_terms)
-    # print(session_state.msb_terms)
-    # print(session_state.offset_terms)
     # print("updating PSD")
     chan_obj = update_chan_obj(session_state, taps_per_phase, gen_2X, max_fft)
     fft_size = 2048
