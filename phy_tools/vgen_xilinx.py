@@ -90,8 +90,9 @@ def comp_opmodes(opcode, areg, breg, rnd=False):
             inmode = inmode & 13
         else:
             inmode = 2
-        if areg == 1:
-            inmode += 1
+
+    if areg == 1:
+        inmode += 1
 
     if breg == 1:
         inmode += 16
@@ -325,7 +326,7 @@ def ret_opcode_params(opcode, rnd=False):
 
     int_dict['use_dport'] = True if d_test else int_dict['use_dport']
     int_dict['use_preadd'] = True if d_test else int_dict['use_preadd']
-    int_dict['use_mult'] = True if d_test else int_dict['use_mult']
+    int_dict['use_mult'] = True if (a_test or b_test or d_test) else int_dict['use_mult']
 
     if re.search(r'\bacin\b', opcode, re.IGNORECASE) is not None:
         int_dict['use_acin'] = True
@@ -383,7 +384,7 @@ def ret_opcode_params_e2(opcode, rnd=False):
 
     int_dict['use_dport'] = True if d_test else int_dict['use_dport']
     int_dict['use_preadd'] = True if d_test else int_dict['use_preadd']
-    int_dict['use_mult'] = True if d_test else int_dict['use_mult']
+    int_dict['use_mult'] = True if (d_test or a_test or b_test) else int_dict['use_mult']
 
     # if re.search(r'\bb\b', opcode, re.IGNORECASE) is not None:
     if re.search(r'\bb\*b\b|\ba\*a\b', opcode, re.IGNORECASE) is not None:
@@ -506,8 +507,8 @@ def gen_dsp48E1(path, name, opcode='A*B', a_width=25, b_width=18, c_width=48, d_
     use_preadd = use_aport and use_dport
 
     pcin = 'pcin' if use_pcin_port else '48\'d0'
-    a_val = 'a_s' if (use_aport or use_concat) else '30\'d0'
-    b_val = 'b_s' if (use_bport or use_concat) else '18\'d0'
+    a_val = 'a_s' if (use_aport or use_concat) else '30\'d1'
+    b_val = 'b_s' if (use_bport or use_concat) else '18\'d1'
     c_val = 'c_s' if use_cport else '48\'d0'
     d_val = 'd_s' if use_dinput else '25\'d0'
     acin = 'acin' if use_acin_port else '30\'d0'
@@ -888,10 +889,10 @@ def gen_dsp48E1(path, name, opcode='A*B', a_width=25, b_width=18, c_width=48, d_
         fh.write('    .USE_DPORT(\"{}\"), // Select D port usage (TRUE or FALSE)\n'.format(dport_str))
         if use_concat and use_mult:
             fh.write('    .USE_MULT("DYNAMIC"), // Select multiplier usage ("MULTIPLY", "DYNAMIC", or "NONE")\n')
-        elif use_concat:
-            fh.write('    .USE_MULT("NONE"), // Select multiplier usage ("MULTIPLY", "DYNAMIC", or "NONE")\n')
-        else:
+        elif use_mult:
             fh.write('    .USE_MULT("MULTIPLY"), // Select multiplier usage ("MULTIPLY", "DYNAMIC", or "NONE")\n')
+        else:
+            fh.write('    .USE_MULT("NONE"), // Select multiplier usage ("MULTIPLY", "DYNAMIC", or "NONE")\n')
 
         fh.write('    // Pattern Detector Attributes: Pattern Detection Configuration\n')
         fh.write('    .AUTORESET_PATDET("NO_RESET"), // "NO_RESET", "RESET_MATCH", "RESET_NOT_MATCH"\n')
@@ -1124,8 +1125,8 @@ def gen_dsp48E2(path, name, opcode='A*B', a_width=27, b_width=18, c_width=48, d_
     mreg = 0 if not use_mult else mreg
 
     pcin = 'pcin' if use_pcin_port else '48\'d0'
-    a_val = 'a_s' if (use_aport or use_concat) else '30\'d0'
-    b_val = 'b_s' if (use_bport or use_concat) else '18\'d0'
+    a_val = 'a_s' if (use_aport or use_concat) else '30\'d1'
+    b_val = 'b_s' if (use_bport or use_concat) else '18\'d1'
     c_val = 'c_s' if use_cport else '48\'d0'
     d_val = 'd_s' if use_dinput else '27\'d0'
     acin = 'acin' if use_acin_port else '30\'d0'
@@ -1519,10 +1520,10 @@ def gen_dsp48E2(path, name, opcode='A*B', a_width=27, b_width=18, c_width=48, d_
         # fh.write('    .USE_DPORT(\"{}\"), // Select D port usage (TRUE or FALSE)\n'.format(dport_str))
         if use_concat and use_mult:
             fh.write('    .USE_MULT("DYNAMIC"), // Select multiplier usage ("MULTIPLY", "DYNAMIC", or "NONE")\n')
-        elif use_concat:
-            fh.write('    .USE_MULT("NONE"), // Select multiplier usage ("MULTIPLY", "DYNAMIC", or "NONE")\n')
-        else:
+        elif use_mult:
             fh.write('    .USE_MULT("MULTIPLY"), // Select multiplier usage ("MULTIPLY", "DYNAMIC", or "NONE")\n')
+        else:
+            fh.write('    .USE_MULT("NONE"), // Select multiplier usage ("MULTIPLY", "DYNAMIC", or "NONE")\n')
 
         fh.write('    // Pattern Detector Attributes: Pattern Detection Configuration\n')
         fh.write('    .AUTORESET_PATDET("NO_RESET"), // "NO_RESET", "RESET_MATCH", "RESET_NOT_MATCH"\n')

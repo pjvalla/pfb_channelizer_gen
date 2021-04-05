@@ -32,6 +32,7 @@ from phy_tools.plt_utils import marker_list
 import phy_tools.gen_utils as gen_utils
 from phy_tools.gen_utils import upsample, add_noise_pwr, write_complex_samples, read_complex_samples, write_binary_file
 from phy_tools.gen_utils import gen_comp_tone, read_binary_file, compass
+from phy_tools.qam_waveform import QAM_Mod
 from phy_tools.fp_utils import nextpow2
 from phy_tools.gen_utils import ret_module_name, ret_valid_path
 from phy_tools.fp_utils import ret_num_bitsU, dec_to_ubin
@@ -1229,7 +1230,8 @@ class Channelizer(object):
     def pfb_msb(self):
         return self.fil_msb
 
-    def erfc(self, x):
+    @staticmethod
+    def erfc(x):
         # save the sign of x
         sign = [1 if val >= 0 else -1 for val in x]
         x = np.abs(x)
@@ -1269,7 +1271,7 @@ class Channelizer(object):
         MTerm = np.round((self.fc_scale * (1. / fft_size))**-1)
 
         x = K * (MTerm * F - offset)
-        A = np.sqrt(0.5 * self.erfc(x))
+        A = np.sqrt(0.5 * Channelizer.erfc(x))
 
         N = len(A)
         idx = np.arange(N // 2)
@@ -1333,17 +1335,17 @@ class Channelizer(object):
         limit = 4 * self.fc
         step = self.fc / 50.
         freq_vector = np.arange(-limit, limit, step)
-        self.plot_psd(title=plot_title, pwr_pts=SIX_DB, fft_size=fft_size,
-                      miny=-100, freq_vector=freq_vector)
+        self.plot_psd(title=plot_title, pwr_pts=SIX_DB, fft_size=fft_size, miny=-100, freq_vector=freq_vector)
 
         plot_title = "Channelizer Filter Impulse Response Full"
         self.plot_psd(title=plot_title, pwr_pts=SIX_DB, fft_size=fft_size, miny=-180)
 
-    def gen_cen_freqs(self):
+    @staticmethod
+    def gen_cen_freqs(paths):
 
-        half_step = 1. / self.paths
+        half_step = 1. / paths
         full_step = half_step * 2
-        num_steps = self.paths // 2 - 1
+        num_steps = paths // 2 - 1
 
         init_list = [0]
         left_side = [-full_step - val * full_step for val in reversed(range(num_steps))]
@@ -1352,25 +1354,32 @@ class Channelizer(object):
 
         return init_list
 
-    def circ_shift(self, in_vec):
+    @staticmethod
+    def conv_bins_to_centers(paths, bins):
+        centers = np.roll(np.fft.fftshift(Channelizer.gen_cen_freqs(paths)), 1)
+        return [centers[bin] for bin in bins]
+
+    @staticmethod
+    def circ_shift(in_vec, paths):
         """
             Implements the circular shift routine of the Channelizer algorithm
         """
         shift_out = []
         for i, fil_arm in enumerate(in_vec):
             if i % 2:
-                shift_out.append(np.roll(fil_arm, self.paths // 2))
+                shift_out.append(np.roll(fil_arm, paths // 2))
             else:
                 shift_out.append(fil_arm)
 
         return np.asarray(shift_out)
 
-    def pf_run(self, sig_array, pf_bank, rate=1):
+    @staticmethod
+    def pf_run(sig_array, pf_bank, paths, rate=1):
         """
             Runs the input array through the polyphase filter bank.
         """
         fil_out = []
-        offset = self.paths // self.rate
+        offset = paths // rate
         for j in range(rate):
             for i, _ in enumerate(sig_array):
                 # remember in channelizer samples are fed to last path first -- it is a decimating filter.
@@ -1380,10 +1389,11 @@ class Channelizer(object):
 
         return np.asarray(fil_out)
 
-    def trunc_vec(self, input_vec):
-        mod_term = self.paths
-        if self.gen_2X:
-            mod_term = self.paths // 2
+    @staticmethod
+    def trunc_vec(input_vec, paths, gen_2X):
+        mod_term = paths
+        if gen_2X:
+            mod_term = paths // 2
         trunc = len(input_vec) % mod_term
         if trunc > 0:
             input_vec = input_vec[:-trunc]
@@ -1456,17 +1466,18 @@ class Channelizer(object):
         write_binary_file(np.array(vec), file_name, 'I', big_endian=True)
         return bin_values
 
-    def gen_pf_bank(self):
+    @staticmethod
+    def gen_pf_bank(poly_fil, paths, rate):
         """
             Generates appropriate form of the polyphase filter bank to be used in the
             channelizer.
         """
-        pf_bank = copy.copy(self.poly_fil)
+        pf_bank = copy.copy(poly_fil)
         # modify pf_bank if gen_2X
-        if self.rate == 2:
+        if rate == 2:
             pf_ret = []
             for i, pf_row in enumerate(pf_bank):
-                if i < (self.paths // 2):
+                if i < (paths // 2):
                     pf_ret.append(upsample(pf_row, 2, 0))
                 else:
                     pf_ret.append(upsample(pf_row, 2, 1))
@@ -1481,7 +1492,7 @@ class Channelizer(object):
         """
         # reshape input_vec
 
-        input_vec = self.trunc_vec(input_vec)
+        input_vec = Channelizer.trunc_vec(input_vec, self.paths, self.gen_2X)
         if plot_out:
             plot_psd_helper(input_vec, fft_size=1024, title='Buffer Sig', miny=None, plot_time=False, markersize=None,
                             plot_on=True, savefig=True)
@@ -1489,7 +1500,7 @@ class Channelizer(object):
 
         sig_array = np.flipud(np.reshape(input_vec, (self.paths // self.rate, -1), order='F'))
 
-        pf_bank = self.gen_pf_bank()
+        pf_bank = Channelizer.gen_pf_bank(self.poly_fil, self.paths, self.rate)
         num_plots = self.M
         if (plot_out):
             plt_sig = input_vec[:self.M * 10000]
@@ -1501,7 +1512,7 @@ class Channelizer(object):
                 buff_array.extend(temp.tolist())
 
 
-        fil_out = self.pf_run(sig_array, pf_bank, self.rate)
+        fil_out = Channelizer.pf_run(sig_array, pf_bank, self.paths, self.rate)
 
         if (plot_out):
             plt_array = np.reshape(fil_out[:,:], (1, -1), order='F').flatten()
@@ -1511,7 +1522,7 @@ class Channelizer(object):
                             plot_on=True, savefig=True)
 
         # now perform circular shifting if this is a 2X filter bank.
-        shift_out = self.circ_shift(fil_out.transpose()) if self.rate == 2 else fil_out.transpose()
+        shift_out = Channelizer.circ_shift(fil_out.transpose(), self.paths) if self.rate == 2 else fil_out.transpose()
         if (plot_out):
             shift_tp = shift_out.transpose()
             plt_array = np.reshape(shift_tp, (1, -1), order='F').flatten()
@@ -1528,7 +1539,7 @@ class Channelizer(object):
                 ax0.plot(np.real(chan_out[:, ii]))
                 ax1.plot(np.imag(chan_out[:, ii]))
                 title = 'IFFT Output #{}'.format(ii)
-                fig.canvas.set_window_title(title)
+                fig.canvas.manager.set_window_title(title)
                 fig.savefig(title + '.png', figsize=(12, 10))
 
         return chan_out.transpose()
@@ -1537,14 +1548,14 @@ class Channelizer(object):
         """
             Function generates the synthesis bank of the channelizer.
         """
-        input_vec = self.trunc_vec(input_vec)
+        input_vec = Channelizer.trunc_vec(input_vec, self.paths, self.gen_2X)
         sig_array = np.reshape(input_vec, (self.paths, -1), order='F')
-        pf_bank = self.gen_pf_bank()
+        pf_bank = Channelizer.gen_pf_bank(self.poly_fil, self.paths, self.rate)
 
         fft_out = np.fft.ifft(self.paths * sig_array, axis=0)
 
-        shift_out = self.circ_shift(fft_out.transpose())
-        fil_out = self.rate * self.pf_run(shift_out.transpose(), pf_bank, 1)
+        shift_out = Channelizer.circ_shift(fft_out.transpose(), self.paths)
+        fil_out = self.rate * Channelizer.pf_run(shift_out.transpose(), pf_bank, self.paths, 1)
 
         if self.rate == 2:
             offset = self.paths // 2
@@ -1560,7 +1571,7 @@ class Channelizer(object):
         if pf_up is None:
             pf_up = self.gen_usample_pf()
 
-        (freq_path, phase_path, ref_phase) = self.gen_freq_phase_profiles(pf_up)
+        _, _, ref_phase = self.gen_freq_phase_profiles(pf_up)
 
         nfft = np.shape(pf_up)[1]
         freq1 = np.fft.fftshift(np.fft.fft(pf_up, nfft, 1))
@@ -1622,7 +1633,7 @@ class Channelizer(object):
 
         freq_path = []
         phase_path = []
-        for i, taps_bb in enumerate(pf_up):
+        for taps_bb in pf_up:
             temp = np.fft.fftshift(np.fft.fft(taps_bb))
             freq_path.append(np.abs(temp))
             phase_path.append(np.unwrap(np.angle(temp)) / (2 * np.pi))
@@ -1631,135 +1642,135 @@ class Channelizer(object):
 
         return (freq_path, phase_path, ref_phase)
 
-    # def gen_animation(self, fps=15, dpi_val=300, mpeg_file='test.mp4', sleep_time=.02):
-    #     sel = 1
-    #     ph_steps = 300
-    #     inc = sel / float(ph_steps)
-    #     num_frames = 10
-    #     std_dev = np.sqrt(.02 / self.paths)
-    #     mean = .5 / self.paths
-    #     sig_bws = np.abs(std_dev * np.random.randn(self.paths) + mean)
+    def gen_animation(self, fps=15, dpi_val=300, mpeg_file='test.mp4', sleep_time=.02):
+        sel = 1
+        ph_steps = 300
+        inc = sel / float(ph_steps)
+        num_frames = 10
+        std_dev = np.sqrt(.02 / self.paths)
+        mean = .5 / self.paths
+        sig_bws = np.abs(std_dev * np.random.randn(self.paths) + mean)
 
-    #     sig_bws = [value if value > .1 else .1 for value in sig_bws]
-    #     cen_freqs = self.gen_cen_freqs()
-    #     mod_obj = QAM_Mod()
-    #     sig = None
-    #     for ii, (sig_bw, cen_freq) in enumerate(zip(sig_bws, cen_freqs)):  # cen_freqs:
-    #         temp, _ = mod_obj.gen_frames(num_frames=num_frames, cen_freq=cen_freq, frame_space_mean=0, frame_space_std=0, sig_bw=sig_bw)
-    #         idx = np.argmax(np.abs(temp))
+        sig_bws = [value if value > .1 else .1 for value in sig_bws]
+        cen_freqs = Channelizer.gen_cen_freqs(self.paths)
+        mod_obj = QAM_Mod()
+        sig = None
+        for ii, (sig_bw, cen_freq) in enumerate(zip(sig_bws, cen_freqs)):  # cen_freqs:
+            temp, _ = mod_obj.gen_frames(num_frames=num_frames, cen_freq=cen_freq, frame_space_mean=0, frame_space_std=0, sig_bw=sig_bw)
+            idx = np.argmax(np.abs(temp))
 
-    #         lidx = idx - 5000
-    #         ridx = lidx + 20000
+            lidx = idx - 5000
+            ridx = lidx + 20000
 
-    #         if ii == 0:
-    #             sig = temp[lidx:ridx]
-    #         else:
-    #             sig_temp = temp[lidx:ridx]
-    #             sig[:len(sig_temp)] += sig_temp
+            if ii == 0:
+                sig = temp[lidx:ridx]
+            else:
+                sig_temp = temp[lidx:ridx]
+                sig[:len(sig_temp)] += sig_temp
 
-    #     (sig, _) = gen_utils.add_noise_pwr(30, sig)
+        sig, _ = gen_utils.add_noise_pwr(30, sig)
         
-    #     plot_psd_helper(sig)
-    #     FFMpegWriter = manimation.writers['ffmpeg']  # ['ffmpeg']  avconv
-    #     # metadata = dict(title='Movie Test', artist='Matplotlib', comment='Movie support!')
-    #     metadata = dict(artist='Matplotlib')
+        plot_psd_helper(sig)
+        FFMpegWriter = manimation.writers['ffmpeg']  # ['ffmpeg']  avconv
+        # metadata = dict(title='Movie Test', artist='Matplotlib', comment='Movie support!')
+        metadata = dict(artist='Matplotlib')
 
-    #     writer = FFMpegWriter(fps=fps, codec="libx264", bitrate=-1,metadata=None)
+        writer = FFMpegWriter(fps=fps, codec="libx264", bitrate=-1,metadata=None)
 
-    #     pf_up = self.gen_usample_pf()
-    #     fig = plt.figure()
-    #     fig.set_tight_layout(False)
+        pf_up = self.gen_usample_pf()
+        fig = plt.figure()
+        fig.set_tight_layout(False)
 
-    #     # writer = MovieWriter(fig, frame_format= , fps=fps)
-    #     ax = fig.add_subplot(221, projection='3d')
-    #     ax.xaxis.labelpad = 10
-    #     ax.yaxis.labelpad = 10
-    #     ax1 = fig.add_subplot(222, projection='3d')
-    #     ax1.xaxis.labelpad = 10
-    #     ax1.yaxis.labelpad = 10
-    #     ax2 = fig.add_subplot(223, projection='polar')
-    #     ax3 = fig.add_subplot(224)
-    #     fig.subplots_adjust(left=.08, bottom=.13, top=.95, right=.96, hspace=.4, wspace=.2)
-    #     y_vec = np.arange(-1, 1., 2. / np.shape(pf_up)[1])
+        # writer = MovieWriter(fig, frame_format= , fps=fps)
+        ax = fig.add_subplot(221, projection='3d')
+        ax.xaxis.labelpad = 10
+        ax.yaxis.labelpad = 10
+        ax1 = fig.add_subplot(222, projection='3d')
+        ax1.xaxis.labelpad = 10
+        ax1.yaxis.labelpad = 10
+        ax2 = fig.add_subplot(223, projection='polar')
+        ax3 = fig.add_subplot(224)
+        fig.subplots_adjust(left=.08, bottom=.13, top=.95, right=.96, hspace=.4, wspace=.2)
+        y_vec = np.arange(-1, 1., 2. / np.shape(pf_up)[1])
 
-    #     phase_vec = np.arange(0, sel + 5 * inc, inc)
-    #     # pad the end with the last phase for 30 frames
-    #     phase_vec = np.concatenate((phase_vec, np.array([phase_vec[-1]]*30)))
+        phase_vec = np.arange(0, sel + 5 * inc, inc)
+        # pad the end with the last phase for 30 frames
+        phase_vec = np.concatenate((phase_vec, np.array([phase_vec[-1]]*30)))
 
-    #     (_, sig_psd) = gen_psd(sig, fft_size=len(y_vec))
-    #     with writer.saving(fig, mpeg_file, dpi_val):
-    #         for phase in phase_vec:
-    #             if phase > 1:
-    #                 m = 1
-    #             else:
-    #                 m = phase
-    #             indices = np.arange(0, self.M)
-    #             rot = np.exp(1j * 2 * np.pi * (indices / float(self.M)) * m)
-    #             pf_up3 = [rot_value * row for (rot_value, row) in zip(rot, pf_up)]
-    #             (freq_path, phase_path, ref_phase) = self.gen_freq_phase_profiles(pf_up3)
-    #             x_sum = 0
-    #             z_sum = 0
-    #             for i, (f_path, p_path) in enumerate(zip(freq_path, phase_path)):
-    #                 arg1 = p_path - ref_phase
+        (_, sig_psd) = gen_psd(sig, fft_size=len(y_vec))
+        with writer.saving(fig, mpeg_file, dpi_val):
+            for phase in phase_vec:
+                if phase > 1:
+                    m = 1
+                else:
+                    m = phase
+                indices = np.arange(0, self.M)
+                rot = np.exp(1j * 2 * np.pi * (indices / float(self.M)) * m)
+                pf_up3 = [rot_value * row for (rot_value, row) in zip(rot, pf_up)]
+                (freq_path, phase_path, ref_phase) = self.gen_freq_phase_profiles(pf_up3)
+                x_sum = 0
+                z_sum = 0
+                for i, (f_path, p_path) in enumerate(zip(freq_path, phase_path)):
+                    arg1 = p_path - ref_phase
 
-    #                 # x term is the imaginary component frequency Response of path ii
-    #                 # rotated by the phase response of path ii
-    #                 exp_vec = np.exp(1j * 2 * np.pi * arg1)
-    #                 x_vec = f_path * np.imag(exp_vec)
-    #                 z_vec = f_path * np.real(exp_vec)
-    #                 x_sum += x_vec
-    #                 z_sum += z_vec
-    #                 if i == 0:
-    #                     ax.set_xlabel(r'$\sf{Imag}$')
-    #                     ax.set_ylabel(r'$\sf{Freq}$')
-    #                     ax.set_zlabel(r'$\sf{Real}$')
-    #                     ax.view_init(30, 10)
-    #                     ax.set_ylim(-1, 1.)
-    #                     ax.set_xlim(-1, 1)
-    #                     ax.set_zlim(-1, 1)
-    #                     ax.set_title(r'$\sf{Phase\ Arms}$')
-    #                     ax.plot(np.array([0, 0]), np.array([0, 0]), np.array([-1.2, 1.2]), color='k', linewidth=.5)
-    #                     ax.plot(np.array([0, 0]), np.array([-1.2, 1.2]), np.array([0, 0]), color='k', linewidth=.5)
-    #                     ax.plot(np.array([-1.2, 1.2]), np.array([0, 0]), np.array([0, 0]), color='k', linewidth=.5)
+                    # x term is the imaginary component frequency Response of path ii
+                    # rotated by the phase response of path ii
+                    exp_vec = np.exp(1j * 2 * np.pi * arg1)
+                    x_vec = f_path * np.imag(exp_vec)
+                    z_vec = f_path * np.real(exp_vec)
+                    x_sum += x_vec
+                    z_sum += z_vec
+                    if i == 0:
+                        ax.set_xlabel(r'$\sf{Imag}$')
+                        ax.set_ylabel(r'$\sf{Freq}$')
+                        ax.set_zlabel(r'$\sf{Real}$')
+                        ax.view_init(30, 10)
+                        ax.set_ylim(-1, 1.)
+                        ax.set_xlim(-1, 1)
+                        ax.set_zlim(-1, 1)
+                        ax.set_title(r'$\sf{Phase\ Arms}$')
+                        ax.plot(np.array([0, 0]), np.array([0, 0]), np.array([-1.2, 1.2]), color='k', linewidth=.5)
+                        ax.plot(np.array([0, 0]), np.array([-1.2, 1.2]), np.array([0, 0]), color='k', linewidth=.5)
+                        ax.plot(np.array([-1.2, 1.2]), np.array([0, 0]), np.array([0, 0]), color='k', linewidth=.5)
 
-    #                 # ax.plot_wireframe(x_vec, y_vec, z_vec)  # , rstride=10, cstride=10)
-    #                 ax.plot(x_vec, y_vec, z_vec, linewidth=.9)  # , rstride=10, cstride=10)
+                    # ax.plot_wireframe(x_vec, y_vec, z_vec)  # , rstride=10, cstride=10)
+                    ax.plot(x_vec, y_vec, z_vec, linewidth=.9)  # , rstride=10, cstride=10)
 
-    #             x_sum = x_sum / self.paths
-    #             z_sum = z_sum / self.paths
+                x_sum = x_sum / self.paths
+                z_sum = z_sum / self.paths
 
-    #             ax1.set_xlabel(r'$\sf{Imag}$')
-    #             ax1.set_ylabel(r'$\sf{Freq}$')
-    #             ax1.set_zlabel(r'$\sf{Real}$')
-    #             ax1.view_init(30, 10)
-    #             ax1.set_ylim(-1, 1.)
-    #             ax1.set_xlim(-1, 1)
-    #             ax1.set_zlim(-1, 1)
-    #             ax1.set_title(r'$\sf{Phase Coherent Sum}$')
-    #             ax1.plot([0, 0], [0, 0], [-1.2, 1.2], color='k', linewidth=.5)
-    #             ax1.plot([0, 0], [-1.2, 1.2], [0, 0], color='k', linewidth=.5)
-    #             ax1.plot([-1.2, 1.2], [0, 0], [0, 0], color='k', linewidth=.5)
-    #             ax1.plot(x_sum, y_vec, z_sum, linewidth=.9)
+                ax1.set_xlabel(r'$\sf{Imag}$')
+                ax1.set_ylabel(r'$\sf{Freq}$')
+                ax1.set_zlabel(r'$\sf{Real}$')
+                ax1.view_init(30, 10)
+                ax1.set_ylim(-1, 1.)
+                ax1.set_xlim(-1, 1)
+                ax1.set_zlim(-1, 1)
+                ax1.set_title(r'$\sf{Phase Coherent Sum}$')
+                ax1.plot([0, 0], [0, 0], [-1.2, 1.2], color='k', linewidth=.5)
+                ax1.plot([0, 0], [-1.2, 1.2], [0, 0], color='k', linewidth=.5)
+                ax1.plot([-1.2, 1.2], [0, 0], [0, 0], color='k', linewidth=.5)
+                ax1.plot(x_sum, y_vec, z_sum, linewidth=.9)
 
-    #             rot = [np.exp(1j * 2 * np.pi * (ii / float(self.paths)) * m) for ii in range(self.paths)]
+                rot = [np.exp(1j * 2 * np.pi * (ii / float(self.paths)) * m) for ii in range(self.paths)]
 
-    #             compass(np.real(rot), np.imag(rot), ax2)
-    #             ax2.set_xlabel(r'$\sf{Phase\ rotator\ progression}')
+                compass(np.real(rot), np.imag(rot), ax2)
+                ax2.set_xlabel(r'$\sf{Phase\ rotator\ progression}')
 
-    #             fil = z_sum + 1j * x_sum
-    #             fil_log = 20 * np.log10(np.abs(fil))
-    #             out_log = sig_psd + fil_log
-    #             plot_psd(ax3, y_vec, out_log, miny=-85, maxy=15, titlesize=12, labelsize=10, xlabel=df_str)
+                fil = z_sum + 1j * x_sum
+                fil_log = 20 * np.log10(np.abs(fil))
+                out_log = sig_psd + fil_log
+                plot_psd(ax3, y_vec, out_log, miny=-85, maxy=15, titlesize=12, labelsize=10, xlabel=df_str)
 
-    #             # fig.subplots_adjust(top=.95)   # tight_layout(h_pad=.5)
-    #             writer.grab_frame()
-    #             time.sleep(sleep_time)
-    #             ax.clear()
-    #             ax1.clear()
-    #             ax2.clear()
-    #             ax3.clear()
+                # fig.subplots_adjust(top=.95)   # tight_layout(h_pad=.5)
+                writer.grab_frame()
+                time.sleep(sleep_time)
+                ax.clear()
+                ax1.clear()
+                ax2.clear()
+                ax3.clear()
 
-    #    plt.close(fig)
+        plt.close(fig)
 
     def gen_properties(self, plot_on=True):
         """
@@ -1789,14 +1800,14 @@ class Channelizer(object):
         ax.set_xlabel('Nyquist Zones')
         ax.set_ylabel('Phase (radians)')
         ax.set_title(title)
-        fig.canvas.set_window_title(title)
+        fig.canvas.manager.set_window_title(title)
         fig.savefig(title, figsize=(12, 10))
 
         title = r'$\sf{Reference\ Partition}$'
         fig, ax = plt.subplots()
         ax.stem(bb1[0])
         ax.set_title(r'$\sf{Polyphase Filter\ --\ Reference\ Partition}$')
-        fig.canvas.set_window_title(title)
+        fig.canvas.manager.set_window_title(title)
         fig.savefig(title, figsize=(12, 10))
 
         if plot_on:
@@ -1824,30 +1835,28 @@ class Channelizer(object):
 
             fig.savefig('Properties.png', figsize=(12, 10))
 
-def gen_test_sig(file_name=None, bursty=False):
 
-    cen_freqs = [-.20, -.5, .25, .75]
-    sig_bws = [.1, .10, .05, .125]
-    amps = [.2, .5, .7, .3]
-    roll = [1000, 3000, 4000, 5000]
+
+def gen_test_sig(fft_size, file_name=None, bursty=False, bins=[0, 3, 4, 7], sig_bws = [.1, .10, .05, .125], amps = [.2, .5, .7, .3], roll=[1000, 3000, 4000, 5000]):
+
+    cen_freqs = Channelizer.conv_bins_to_centers(fft_size, bins)    
 
     # bursty
     if bursty:
         num_frames = 10
         packet_size = 100
         frame_space_mean = 20000
-        roll = [1000, 3000, 4000, 5000]
     else:
         num_frames = 1
         packet_size = 10000
         frame_space_mean = 0
-        roll = [0, 0, 0, 0]
 
     sig_list = []
     if file_name is None:
         file_name = SIM_PATH + 'sig_store_test8.bin'
     mod_obj = QAM_Mod(frame_mod='qam16', xcode_shift=2, ycode_shift=2, packet_size=packet_size)
-    for ii, (cen_freq, sig_bw, amp, shift) in enumerate(zip(cen_freqs, sig_bws, amps, roll)):
+
+    for cen_freq, sig_bw, amp, shift in zip(cen_freqs, sig_bws, amps, roll):
         temp, _ = mod_obj.gen_frames(num_frames=num_frames, cen_freq=cen_freq, frame_space_mean=frame_space_mean,
                                      frame_space_std=0, sig_bw=sig_bw, snr=200)
 
@@ -1865,7 +1874,7 @@ def gen_test_sig(file_name=None, bursty=False):
     sig, _ = add_noise_pwr(80, sig)
     sig_fi = fp_utils.ret_fi(sig, qvec=(16, 15), overflow='saturate')
 
-    plot_psd_helper(sig_fi.vec, title='Input Spectrum', savefig=True, w_time=True)
+    plot_psd_helper(sig_fi.vec, title='Input Spectrum', savefig=True, plot_time=True, dpi=100)
     write_complex_samples(sig_fi.vec, file_name, False, 'h', big_endian=True)
     plt.show()
 
@@ -2387,9 +2396,6 @@ def process_chan_out(file_name, iq_offset=10*TAPS_PER_PHASE, Mmax=64):
     M = np.max(bin_list) + 1
     print("M = {}".format(M))
 
-    # write_complex_samples(iq_sig, './raw_out.bin', q_first=False)
-
-    # ipdb.set_trace()
     i_sig = fp_utils.uint_to_fp(i_sig[offset:], qvec=(16, 15), signed=1, overflow='wrap')
     q_sig = fp_utils.uint_to_fp(q_sig[offset:], qvec=(16, 15), signed=1, overflow='wrap')
     tuser_sig = tuser_sig[offset:]
@@ -2454,7 +2460,7 @@ def process_chan_out(file_name, iq_offset=10*TAPS_PER_PHASE, Mmax=64):
     # sig_list = np.arange(35, 51).tolist()  #[41, 42, 43, 44, 45, 46]
     for j, bin_num in enumerate(bin_list):
         plot_psd_helper((wvecs[j], resps[j]), title=r'$\sf{{PSD\ Overlay\ {}}}$'.format(bin_num), plot_time=True, miny=-150, maxy=20.,
-                        time_sig=time_sigs[j][:500], markersize=None, plot_on=False, savefig=True, ytime_min=-1., ytime_max=1.)
+                        time_sig=time_sigs[j], markersize=None, plot_on=False, savefig=True, ytime_min=-1., ytime_max=1.)
         plt.close('all')
 
 
@@ -2680,6 +2686,7 @@ def get_args():
         wvecs = []
         time_sigs = []
         plot_psd_helper(vec, title='Channelizer Input', savefig=True, dpi=120, plot_time=True)
+        title = 'Channelized Output'
         for ii, row in enumerate(chan_out):
             # print(len(row))
             # row = row[row_offset:row_end]
@@ -2694,7 +2701,6 @@ def get_args():
             res_value = np.max(psd)
             print("{} : Largest value = {}, i{} - resp = {} db".format(ii, real_value, imag_value, res_value))
 
-        title = 'Channelized Output'
         fig, ax = plt.subplots(nrows=1, ncols=1)
         fig.subplots_adjust(bottom=.10, left=.1, top=.95)
         fig.subplots_adjust(hspace=.50, wspace=.2)
@@ -2709,8 +2715,6 @@ def get_args():
         print("wvecs  shape = {}".format(np.shape(wvecs)))
         title = 'Channelizer Output'
         time_title = 'Channelizer Output time'
-        chan_list = [4, 48, 96, 97, 98, 123, 124]
-        chan_list = list(range(M))
         chan_list = [4, 48, 96, 97, 98, 123, 124]
         marker_idx = 0
         style_list = ['solid', 'dash', 'dashdot']
@@ -2736,19 +2740,19 @@ def get_args():
     # plot_psd(ax[2][0], wvecs[45], resps[45], title='Channel 4', miny=-120, maxy=10)
     # plot_psd(ax[2][1], wvecs[46], resps[46], title='Channel 5', miny=-120, maxy=10)
 
-    file_name = copy.copy(title)
-    file_name = ''.join(e if e.isalnum() else '_' for e in file_name)
-    file_name += '.png'
-    file_name = file_name.replace("__", "_")
-    print(file_name)
-    fig.savefig(file_name)
+        file_name = copy.copy(title)
+        file_name = ''.join(e if e.isalnum() else '_' for e in file_name)
+        file_name += '.png'
+        file_name = file_name.replace("__", "_")
+        print(file_name)
+        fig.savefig(file_name)
 
-    file_name = copy.copy(time_title)
-    file_name = ''.join(e if e.isalnum() else '_' for e in file_name)
-    file_name += '.png'
-    file_name = file_name.replace("__", "_")
-    print(file_name)
-    fig_time.savefig(file_name)
+        file_name = copy.copy(time_title)
+        file_name = ''.join(e if e.isalnum() else '_' for e in file_name)
+        file_name += '.png'
+        file_name = file_name.replace("__", "_")
+        print(file_name)
+        fig_time.savefig(file_name)
     if args.generate_taps:
         gen_tap_plots(M_list)
 
@@ -2769,6 +2773,13 @@ def get_args():
 
 
 if __name__ == "__main__":
-    modem_args = get_args()
 
+    chan_list = [4, 48, 96, 97, 98, 123, 124]
+    sig_bws = np.linspace(.001, .004, len(chan_list)).tolist()
+    amps = np.linspace(.2, .5, len(chan_list)).tolist()
+    roll_values = np.linspace(1000, 5000, len(chan_list))
+    roll_values = [int(value) for value in roll_values]
+    gen_test_sig(128, './rw_test.bin', False, chan_list, sig_bws, amps, roll_values)
+
+    # modem_args = get_args()
     plt.show(block=blockl)

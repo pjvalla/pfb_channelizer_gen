@@ -13,6 +13,7 @@ import ipdb
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from phy_tools.qam_waveform import QAM_Mod
 from phy_tools.plt_utils import parse_title, plot_macro, attach_legend, gen_psd, find_pwr
 import pandas as pd
 
@@ -230,9 +231,13 @@ def plotly_psd_helper(df, fft_size=1024, pwr_pts=None, freq_pts=None, plot_time=
 
     miny = np.min(ymins) - 10 if miny is None else miny
     maxy = np.max(ymaxs) + 10 if maxy is None else maxy
+    
     # if time dataframe was passed in.
     time_flag = time_df is not None
     time_df = df if time_flag is False else time_df
+
+    num_plots = 1 + plot_time
+
     # if signal is a tuple or a list of tuples, then wvec and resp has been calculated.  Just plot.
     if plot_time:
         psd_tpl = (2, 1)
@@ -398,3 +403,47 @@ def plotly_const_diag(df, title=None, label=None, format_str=None, linestyle=Non
     )
     fig.show()
 
+
+if __name__ == "__main__":
+
+    import plotly.graph_objects as go
+
+    SPB = 4
+    SNR = 20
+
+    x = np.random.normal(size=1000)
+    y = np.random.normal(size=1000)
+
+    data_dict = {'Real':x, 'Imag':y}
+
+    df = pd.DataFrame(data_dict)
+    
+    # plotly_const_diag(df)
+
+    sig_obj = QAM_Mod(frame_mod='qpsk', spb=SPB, snr=SNR)
+    signal = sig_obj.gen_frames(5, frame_space_mean=100000, sig_bw=.5)[0]
+
+    # omega, resp = gen_psd(signal)
+    data_dict = {'iq': np.real(signal[:100]), 'Sig_Idx' : 0}
+
+    df = pd.DataFrame(data_dict)
+
+    signal = sig_obj.gen_frames(5, frame_space_mean=100000, sig_bw=.25, snr=40)[0]
+    data_dict = {'iq': np.real(signal[:100]), 'Sig_Idx': 1}
+
+    df2 = pd.DataFrame(data_dict)
+
+    df = df.append(df2)
+
+    fig = plotly_psd_helper(df, plot_time=True, opacity=[.8]*2, labelsize=18, titlesize=24, miny=-80, index_str='Sig_Idx', tseries_name='iq',
+                            pwr_pts=-3.01)
+    fig.show()
+    # fig = plotly_time_helper(df, opacity=[.8]*2, labelsize=28, titlesize=136, index_str='Sig_Idx', 
+                            #  y_name='iq', stem_plot=True, title=r'$\Large{\sf{Test\ Stem}}$')
+
+    # fig.show()
+
+
+    # fig = px.line(df, x="Omega", y="PSD", color="Sig_Idx")
+    # fig.show()
+    

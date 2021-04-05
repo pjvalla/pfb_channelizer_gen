@@ -9,6 +9,7 @@ import ipdb  # analysis:ignore
 
 from phy_tools.vgen_xilinx import gen_dsp48E1, gen_dsp48E2
 from phy_tools.adv_pfb import gen_pfb
+import phy_tools.vhdl_gen as vhdl_gen
 from phy_tools.verilog_gen import gen_ram, gen_axi_fifo, gen_slicer, name_help, gen_rom, ret_addr_width, axi_fifo_inst
 from phy_tools.verilog_gen import gen_axi_downsample
 from phy_tools.gen_utils import ret_module_name, ret_file_name, ret_valid_path, print_header
@@ -357,8 +358,7 @@ def gen_dec_filter(path, fil_obj, prefix='', tuser_width=0, tlast=False, ram_sty
 
 def gen_mac_filter(path, prefix='', qvec=(16, 15), qvec_coef=(25, 24),tuser_width=0, fil_msb=40, fil_lsb=25, 
                    num_coeffs=64, tlast=False, ram_style='block', rnd=False, dsp48e2=False, first_mac=False, 
-                   last_mac=False, num_macs=8, fifo_ram_style='distributed',
-                   addr_width=3):
+                   last_mac=False, num_macs=8, fifo_ram_style='distributed', addr_width=3, ram_init=None):
     """
         Generates Verilog code to generat MAC based filter.
 
@@ -424,7 +424,7 @@ def gen_mac_filter(path, prefix='', qvec=(16, 15), qvec_coef=(25, 24),tuser_widt
         (_, fifo_name) = gen_axi_fifo(path, tuser_width=tuser_width, tlast=tlast, almost_full=True, almost_empty=False,
                                       count=False, ram_style=fifo_ram_style, prefix='')
 
-    ram_name = gen_ram(path, ram_type='dp', memory_type='read_first', ram_style=ram_style)
+    ram_name = gen_ram(path, ram_type='dp', memory_type='read_first', ram_style=ram_style, ram_init=ram_init)
     taps_ram_name = gen_ram(path, ram_type='dp', memory_type='write_first', ram_style=ram_style)
     with open(file_name, "w") as fh:
         fh.write('\n')
@@ -539,7 +539,7 @@ def gen_mac_filter(path, prefix='', qvec=(16, 15), qvec_coef=(25, 24),tuser_widt
         fh.write('reg [7:0] rd_addr_d[0:{}];\n'.format(clat_msb))
         if first_mac:
             fh.write('reg [7:0] rd_cnt_d[0:{}];\n'.format(clat_msb))
-            fh.write('reg [{}:0] cnt_reset_d;\n'.format(clat_msb))
+            fh.write('reg [{}:0] cnt_reset_d;\n'.format(lat_msb))
 
         if last_mac:
             fh.write('wire [{}:0] data_bus;\n'.format(output_msb))
@@ -556,7 +556,7 @@ def gen_mac_filter(path, prefix='', qvec=(16, 15), qvec_coef=(25, 24),tuser_widt
         if last_mac:
             fh.write('assign data_bus = {pouti, poutq};\n')
 
-        lat_tuple = (lat_msb - 1, clat_msb - 1)
+        lat_tuple = (lat_msb - 1, lat_msb - 1)
         fh.write('assign dsp_valid = (cycling_d[{}] == 1\'b1 && cnt_reset_d[{}] == 1\'b1) ? 1\'b1 : 1\'b0;\n'.format(*lat_tuple))
         if not last_mac:
             fh.write('assign opcode_o = opcode;\n')
@@ -670,7 +670,6 @@ def gen_mac_filter(path, prefix='', qvec=(16, 15), qvec_coef=(25, 24),tuser_widt
         fh.write('end\n')
         fh.write('\n')
         fh.write('// logic implements the sample write address pipelining.\n')
-#         fh.write('integer n;\n')
         fh.write('always @(posedge clk)\n')
         fh.write('begin\n')
         fh.write('    cycling_d <= {{cycling_d[{}:0], cycling}};\n'.format(lat_msb - 1))

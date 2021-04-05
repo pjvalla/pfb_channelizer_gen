@@ -14,6 +14,7 @@ import re
 import scipy.signal as signal
 import struct
 from itertools import count
+from numba import njit
 from scipy.special import erfc, comb
 import os
 from subprocess import check_output, CalledProcessError, DEVNULL
@@ -817,17 +818,19 @@ def comp_llr_table(qvec, bit_map, sym_map, EbNo_sel = 3):
     return (pos_fi, np.array(llr_list))
 
 # generates simple sinc filter with roll-off factor beta.
+@njit(cache=False)
 def make_sinc_filter(beta, tap_cnt, sps, offset=0):
     """
         return the taps of a sinc filter
     """
-    assert tap_cnt & 1, "tap_cnt must be odd"
-    t_index = np.arange(-(tap_cnt - 1) // 2, (tap_cnt - 1) // 2 + 1) / np.double(sps)
+    ntap_cnt = tap_cnt + ((tap_cnt + 1) % 2)
+    # assert tap_cnt & 1, "tap_cnt must be odd"
+    t_index = np.arange(-(ntap_cnt - 1) // 2, (ntap_cnt - 1) // 2 + 1) / np.double(sps)
 
     taps = np.sinc(beta * t_index + offset)
     taps /= np.sum(taps)
 
-    return taps
+    return taps[:tap_cnt]
 
 
 def gain_calc_kpki(loop_eta, loop_bw_ratio):

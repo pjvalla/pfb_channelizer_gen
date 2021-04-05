@@ -553,7 +553,7 @@ class PeakPSDEnergyDetect(object):
         if plot_on:
             fig_axes = plot_waterfall(iq_data, fft_size=self.fft_size, rotate_spec=True, window=self.window, title=title,
                                       plot_psd=plot_psd, normalize=True, num_avgs=self.overlap_segs, channels=active_channels,
-                                      plot_on=plot_on, savefig=savefig, psd_input=psd_input, dpi=dpi, path=path)
+                                      plot_on=plot_on, savefig=savefig, psd_input=psd_input, dpi=dpi, path=self.path)
 
             if plot_peaks:
                 w_vec = ret_omega(self.fft_size)[0]
@@ -717,7 +717,6 @@ class SpectrogramEnergyDetect(object):
             Returns:
                 * trig_vals : Matrix of active bins (frequency is axis 0 and time axis 1.)
         """
-        mod_val = len(input_stream) % self.fft_size
         fft_blocks = ret_fft_blocks(input_stream, self.fft_size, psd_input, self.overlap_segs, self.window)
         fft_blocks = fft_blocks.T
 
@@ -1015,13 +1014,13 @@ class AGCModule(object):
             #  this is already in fixed point representation.
             # ipdb.set_trace()
             ref_diff = log_ref - log_val
-            alpha_int = self.alpha_track
+            alpha_int = alpha_track
             if val_mag <= reg_low_sig:
                 alpha_int = 0
             elif temp_q >= max_pos:
-                alpha_int = self.alpha_overflow
+                alpha_int = alpha_overflow
             elif abs(ref_diff) > self.logtrack_range:
-                alpha_int = self.alpha_acquire
+                alpha_int = alpha_acquire
 
             # apply alpha_track factor.  This is in Log
             alpha_out = ref_diff * alpha_int
@@ -2091,3 +2090,196 @@ class PolyTimingRec(object):
                        'accum': accum_st, 'loop_fil':loop_fil_st, 'nco': nco_st, 'err':err_st, 'num_skips':num_skips_st}
 
         return return_dict
+
+
+class BandEdgeFLL(object):
+
+    def __init__(self, beta=.3, tap_cnt=63, sps=4, loop_bw=.01, loop_eta=.7):
+        """
+            Frequency Locked Loop based on
+            "Band Edge Filters Perform Non Data-Aided Carrier and Timing
+             Synchronizatio of SDR QAM Receivers"  However, it more
+             closely follows GnuRadio's implementation, which generates
+             a high and low frequency and the PLL is driven by the energy
+             difference between the filter outputs.
+        """
+
+        self.sps = sps
+        self.loop_eta = loop_eta
+        self.loop_bw_ratio = loop_bw
+        self.beta = beta
+        self.tap_cnt = tap_cnt
+
+        # use a rrc MF as default.
+        self.mf = make_rrc_filter(beta, tap_cnt, sps)
+
+        self.kp, self.ki = gain_calc_kpki(self.loop_eta, self.loop_bw_ratio)
+        self.gen_filters()
+
+    def gen_filters(self):
+        """
+            Using two sinc filters for this.
+        """
+        temp1 = make_sinc_filter(self.beta, self.tap_cnt, self.sps, .5)
+        temp2 = make_sinc_filter(self.beta, self.tap_cnt, self.sps, -.5)
+
+        fil = temp1 + temp2
+        rot_factor = (1 + self.beta) / self.sps
+
+        self.fil_high = complex_rot(fil, rot_factor)
+        self.fil_low = complex_rot(fil, -rot_factor)
+
+    def plot_sigs(self, error, prop, integral, loop, samps, dpi=100, fft_size=256, num_avgs=1,
+                  window='rect'):
+
+        ticksize = 8
+        titlesize = 12
+        labelsize = 9
+
+        gs = plt.GridSpec(5, 2, wspace=.4, hspace=.8)
+        fig = plt.figure(figsize=(12, 10))
+        fig.set_dpi(dpi)
+
+        ax_error = fig.add_subplot(gs[0, :])
+        plot_time_sig(ax_error, error, title=r'$\sf{Loop\ Error}$', labelsize=labelsize, titlesize=titlesize)
+        ax_prop = fig.add_subplot(gs[1, 0], sharex=ax_error)
+        str_val = r'$\sf{k_{p} * Error}$'
+        plot_time_sig(ax_prop, prop, title=str_val, labelsize=labelsize, titlesize=titlesize)
+        ax_integral = fig.add_subplot(gs[1, 1], sharex=ax_error)
+        str_val = r'$\sf{k_{i} * Error}$'
+        plot_time_sig(ax_integral, integral, title=str_val, labelsize=labelsize, titlesize=titlesize)
+        ax_loop = fig.add_subplot(gs[2, :], sharex=ax_error)
+        plot_time_sig(ax_loop, loop, title=r'$\sf{Loop\ Output}$', labelsize=labelsize, titlesize=titlesize)
+        ax_real = fig.add_subplot(gs[3, 0], sharex=ax_error)
+        plot_time_sig(ax_real, np.real(samps), title=r'$\sf{Real}$', labelsize=labelsize, titlesize=titlesize)
+        ax_imag = fig.add_subplot(gs[3, 1], sharex=ax_error)
+        plot_time_sig(ax_imag, np.imag(samps), title=r'$\sf{Imag}$', labelsize=labelsize, titlesize=titlesize)
+        ax_water = fig.add_subplot(gs[4, :])
+        _, resp_water = waterfall_spec(samps, fft_size, num_avgs, window=window, one_side=False)
+        resp_water = resp_water.T
+
+        low_freq = -1
+        upper_val = np.shape(resp_water)[1] - 1
+        extent_val = [0, upper_val, low_freq, 1]
+        y_int = list(range(upper_val + 1))
+        if len(y_int) > 15:
+            dec_rate = len(y_int) // 15
+            y_int = y_int[::dec_rate]
+
+        ax_water.imshow(resp_water, origin='lower', interpolation='nearest', aspect='auto', extent=extent_val,
+                        cmap=plt.get_cmap('viridis'))
+
+        ax_water.xaxis.set_ticks(y_int)
+        ax_water.ticklabel_format(axis='y', style='sci', scilimits=(-2, 2))
+        lat_str = r'$\sf{Discrete\ Frequency\ }$' + r'$\pi$' + r'$\frac{rads}{sample}$'
+        ax_water.set_ylabel(lat_str, fontsize=labelsize)
+        lat_str = r'$\sf{Spectral\ Slice\ Number}$'
+        ax_water.set_xlabel(lat_str, fontsize=labelsize)
+        ax_water.tick_params(axis='x', labelsize=ticksize, labelrotation=45)
+
+        ax_water.locator_params(nbins=10)
+        ax_water.tick_params(axis='x', labelsize=ticksize)
+        ax_water.tick_params(axis='y', labelsize=ticksize)
+        title = r'$\sf{Waterfall\ Spectrum}$'
+        ax_water.set_title(title, fontsize=titlesize)
+        ax_water.grid(False)
+        # window='', nperseg=nperseg, noverlap=noverlap, fft_size=fft_size,
+        #  return_onesided=return_onesided, normalize=normalize)
+        # plot_psd(ax_psd, wvec, resp)
+        fig.canvas.draw()
+        fig.savefig('./FLL.png')
+
+    def run_faccum_loop(self, in_signal, test_harness=True):
+        rot = 0
+        buff = RingBuffer(len(self.fil_high), dtype=np.complex)
+
+        fil_high = self.fil_high[::-1]
+        fil_low = self.fil_low[::-1]
+        int_val = 0
+        if test_harness:
+            error_ret = []
+            prop_ret = []
+            int_ret = []
+            loop_ret = []
+            phasor = []
+
+        ret_samps = []
+        for samp in in_signal:
+            samp_new = samp * np.exp(1j * np.pi * -rot)
+            # push new sample into buffer
+            buff.append(samp_new)
+
+            # filters are symmetric
+            fil_out_high = np.dot(fil_high, buff.view)
+            fil_out_low = np.dot(fil_low, buff.view)
+
+            err_sig = (fil_out_high + fil_out_low) * np.conj(fil_out_high - fil_out_low)
+
+            freq_error = np.real(err_sig)
+
+            prop = self.kp * freq_error
+            int_val += self.ki * freq_error
+
+            loop_val = prop + int_val
+            ret_samps.append(samp_new)
+
+            # final integration for dds.
+            rot += loop_val
+            if test_harness:
+                error_ret.append(freq_error)
+                prop_ret.append(prop)
+                int_ret.append(int_val)
+                loop_ret.append(loop_val)
+                phasor.append(rot)
+
+        if test_harness:
+            self.plot_sigs(error_ret, prop_ret, int_ret, loop_ret, ret_samps)
+
+    def run_fll_loop(self, in_signal, test_harness=True):
+        rot = 0
+        buff = RingBuffer(len(self.fil_high), dtype=np.complex)
+        int_val = 0
+        if test_harness:
+            error_ret = []
+            prop_ret = []
+            int_ret = []
+            loop_ret = []
+            phasor = []
+
+        fil_high = self.fil_high[::-1]
+        fil_low = self.fil_low[::-1]
+        ret_samps = []
+        for samp in in_signal:
+            samp_new = samp * np.exp(1j * np.pi * rot)
+            # push new sample into buffer
+            buff.append(samp_new)
+
+            # filters are symmetric
+            fil_out_high = np.dot(fil_high, buff.view)
+            fil_out_low = np.dot(fil_low, buff.view)
+
+            mag_high = np.abs(fil_out_high)
+            mag_low = np.abs(fil_out_low)
+
+            error = mag_low - mag_high
+
+            prop = self.kp * error
+            int_val += self.ki * error
+
+            loop_val = prop + int_val
+            ret_samps.append(samp_new)
+
+            # final integration for dds.
+            rot += loop_val
+
+            if test_harness:
+                error_ret.append(error)
+                prop_ret.append(prop)
+                int_ret.append(int_val)
+                loop_ret.append(loop_val)
+                phasor.append(rot)
+
+        if test_harness:
+            self.plot_sigs(error_ret, prop_ret, int_ret, loop_ret, ret_samps)
+
+        return ret_samps

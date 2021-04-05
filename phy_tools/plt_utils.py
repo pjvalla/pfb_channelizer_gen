@@ -42,7 +42,7 @@ psd_str = r'$\sf{PSD}$'
 plt.style.use('fivethirtyeight')
 
 min_alpha = 70
-dpi = 600
+dpi = 200
 max_px = 1
 
 plot_height = 360
@@ -162,7 +162,7 @@ def fig_wrap_up(fig, title=None, savefig=False, plot_on=False, pickle_fig=False,
         title = parse_title(title)
         #replace underscores with slash underscores
         title = title.replace('_', '\_')
-        fig.canvas.set_window_title(title)
+        fig.canvas.manager.set_window_title(title)
 
     if (savefig or pickle_fig) and title is not None:
         # convert spaces to underscores
@@ -843,7 +843,7 @@ def plot_waterfall(in_vec, plot_time=False, title=None, plot_psd=False, normaliz
 
     if title is not None:
         window_title = parse_title(title)
-        fig.canvas.set_window_title(window_title)
+        fig.canvas.manager.set_window_title(window_title)
     if ytime_max - ytime_min == 0.:
         ytime_max += .001
         ytime_min -= .001
@@ -1081,19 +1081,19 @@ def plot_psd(ax, wvec, resp, format_str=None, title=None, label=None, min_n_tick
         attach_legend(ax, fontsize=legendsize, ncol=legend_cols)
 
 
-# def test_run():
+def test_run():
 
-    # from phy_tools.qam_waveform import QAM_Mod
-    # plt.close('all')
+    from phy_tools.qam_waveform import QAM_Mod
+    plt.close('all')
 
-    # snr = 40
-    # spb = 8
+    snr = 40
+    spb = 8
 
-    # sig_obj = QAM_Mod(frame_mod='qpsk', spb=spb, snr=snr)
-    # signal = sig_obj.gen_frames(5, frame_space_mean=100000, sig_bw=.5)[0]
-    # #
-    # plot_psd_helper(signal, normalize=True, miny=-80, savefig=True, plot_on=False, title='test psd')
-    # plot_waterfall(signal, num_avgs=4)
+    sig_obj = QAM_Mod(frame_mod='qpsk', spb=spb, snr=snr)
+    signal = sig_obj.gen_frames(5, frame_space_mean=100000, sig_bw=.5)[0]
+    #
+    plot_psd_helper(signal, normalize=True, miny=-80, savefig=True, plot_on=False, title='test psd')
+    plot_waterfall(signal, num_avgs=4)
 
     # out_name = 'test_sig.mp4'
     # water_obj.waterfall_scroll(signal, dpi_val=450, hist_len=20,

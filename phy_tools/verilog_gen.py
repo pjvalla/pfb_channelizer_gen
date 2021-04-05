@@ -4485,7 +4485,7 @@ def mem_interfaces(fh, memory_type, port='a'):
         fh.write('end\n\n')
 
 
-def gen_ram(path, ram_type='sp', memory_type='write_first', ram_style='block'):
+def gen_ram(path, ram_type='sp', memory_type='write_first', ram_style='block', ram_init=None):
     """
         Generates single, dual, and true dual port rams.
         Valid RAM styles : block, distributed, pipe_distributed.
@@ -4501,7 +4501,10 @@ def gen_ram(path, ram_type='sp', memory_type='write_first', ram_style='block'):
         # old data is presented on the output port
         mem_interfaces(fh, memory_type, port)
 
-    file_name = '{}_{}_{}_ram.v'.format(ram_type, ram_style, memory_type)
+    if ram_init is None:
+        file_name = '{}_{}_{}_ram.v'.format(ram_type, ram_style, memory_type)
+    else:
+        file_name = '{}_{}_{}_init_{}_ram.v'.format(ram_type, ram_style, memory_type, ram_init)
     file_name = os.path.join(path, file_name)
     module_name = ret_module_name(file_name)
     with open(file_name, 'w') as fh:
@@ -4600,7 +4603,11 @@ def gen_ram(path, ram_type='sp', memory_type='write_first', ram_style='block'):
         fh.write('integer i;\n')
         fh.write('initial begin\n')
         fh.write('    for (i = 0; i < DEPTH; i=i+1) begin\n')
-        fh.write('        ram[i] = 0;\n')
+        if ram_init is None:
+            fh.write('        ram[i] = 0;\n')
+        else:
+            # fh.write(f'        ram[i] = {{DATA_WIDTH{{\'d{ram_init}}}}};\n')
+            fh.write(f'        ram[i] = {ram_init};\n')
         fh.write('    end\n')
         fh.write('end\n')
         fh.write('\n')
@@ -4631,6 +4638,7 @@ def gen_ram(path, ram_type='sp', memory_type='write_first', ram_style='block'):
             gen_port(fh, 'a', memory_type=memory_type)
             gen_port(fh, 'b', memory_type=memory_type)
 
+        fh.write('\n')
         fh.write('endmodule\n')
         return module_name
 
