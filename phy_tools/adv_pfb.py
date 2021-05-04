@@ -702,7 +702,7 @@ def gen_pfb(path, Mmax, rom_fi, input_width=16, output_width=16, taps_per_phase=
         fh.write('\n')
         fh.write('endmodule\n')
 
-    return (module_name, tap_ram_name, ram_name)
+    return module_name, tap_ram_name, ram_name, fifo_name
 
 def gen_interp_pfb(path, Mmax, rom_fi, input_width=16, output_width=16, taps_per_phase=24, pfb_msb=40, tlast=False, 
                    tuser_width=0, ram_style='block', prefix='', dsp48e2=False, count_dn=False):
@@ -1921,7 +1921,7 @@ def gen_mem_ctrl(path, name, rom_fi, num_taps=32):
 
 
 def gen_down_select(path, name='downselect', num_channels=512, tuser_width=24):
-    file_name = '{}.v'.format(name)
+    file_name = '{}_{}.v'.format(name, num_channels)
     file_name = os.path.join(path, file_name)
     module_name = ret_module_name(file_name)
     tuser_msb = tuser_width - 1
@@ -2144,7 +2144,7 @@ def gen_down_select(path, name='downselect', num_channels=512, tuser_width=24):
         fh.write('\n')
         fh.write('endmodule\n')
 
-    return file_name
+    return module_name, mux_out
 
 
 def gen_exp_shift_rtl(path, chan_obj, cic_obj):

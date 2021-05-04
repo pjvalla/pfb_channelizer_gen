@@ -551,7 +551,6 @@ def max_filter_output(taps, qvec_coef, P=1, input_width=16, output_width=16, cor
     taps = np.atleast_2d(taps)
     corr_gain = np.max(np.sum(np.abs(taps), axis=1))
     # max correlated value -- this assumes a
-    # corr_gain = nextpow2(temp)
     if correlator:
         s_gain = corr_gain
         msb_gain = nextpow2(s_gain)
@@ -559,6 +558,7 @@ def max_filter_output(taps, qvec_coef, P=1, input_width=16, output_width=16, cor
         percent_max = bit_gain_frac % 1.
         max_coef_val = 2.**msb_gain - 1
         in_use = (s_gain / max_coef_val) * 100.
+    
     # only change the coefficients if less than 90# of the range is in use.
 
     scale_fac = comp_max_value((qvec_coef[0], qvec_coef[0] - 1), True)
@@ -576,7 +576,7 @@ def max_filter_output(taps, qvec_coef, P=1, input_width=16, output_width=16, cor
 
     tuple_val = comp_num_bits(new_b.real, input_width, output_width, P=P)
 
-    (in_use, _, msb, s_gain, n_gain, snr_gain, path_gain, msb_gain) = tuple_val
+    in_use, _, msb, s_gain, _, snr_gain, path_gain, msb_gain = tuple_val
     temp = np.max(np.sum(np.abs(new_b), axis=1))
     corr_gain = nextpow2(temp)
 
@@ -604,14 +604,14 @@ def impz(b, a=1):
     plt.subplot(211)
     plt.stem(x, response)
     plt.ylabel('Amplitude')
-    plt.xlabel(r'n (samples)')
-    plt.title(r'Impulse response')
+    plt.xlabel(r'$\sf{n\ (samples)}$')
+    plt.title(r'$\sf{Impulse\ response}$')
     plt.subplot(212)
     step = np.cumsum(response)
     plt.stem(x, step)
     plt.ylabel('Amplitude')
-    plt.xlabel(r'n (samples)')
-    plt.title(r'Step response')
+    plt.xlabel(r'$\sf{n\ (samples)}$')
+    plt.title(r'$\sf{Step\ response}$')
     plt.subplots_adjust(hspace=0.5)
     plt.show()
 
@@ -705,6 +705,7 @@ def notch_fil(sig, df, mu=.001):
         r1 = r1 * comp_fac + y_out[i] * mu
 
     return y_out
+
 # class NotchFilter(object):
 #     def __init__(self):
 
@@ -1003,7 +1004,6 @@ class CICDecFil(object):
         self.h_vec = np.zeros((2 * self.N, limits[0]))
         # Register growth equation -- Reference Hogenauer's Paper under
         # register growth equations 9a and 9b - Use Max Decimation.
-        # pdb.set_trace()
         for j in np.arange(1, self.N + 1):
             kmax = (self.r_max * self.m_max - 1) * self.N + j - 1
             for k in range(kmax + 1):
@@ -1353,9 +1353,7 @@ class LPFilter(object):
         self.freqz_pts = freqz_pts if freqz_pts < int(50E6) else int(50E6)
         self.hilbert = hilbert
         self.half_band = half_band
-        self.quick_gen = quick_gen
-        if half_band or hilbert:
-            self.quick_gen = False
+        self.quick_gen = False if half_band or hilbert else quick_gen
         self.even_filter = even_filter
         self.num_iters = num_iters
         self.num_iters_min = num_iters_min
@@ -1375,16 +1373,13 @@ class LPFilter(object):
             # This generally gives you a point with 1/2 voltage or -6 dB power.
             self.corner1 = self.hp_point - self.trans_bw / 4.
             self.corner2 = self.hp_point + self.trans_bw * 3. / 4.
-        if self.quick_gen:
-            self.corner1 = self.hp_point
-
+        
+        self.corner1 = self.hp_point if self.quick_gen else self.corner1
         self.corner_step = .05 * self.hp_point
         self.fc_atten = fc_atten if fc_atten is not None else three_db
         # root-raised error function K and MTerm parameters
         self.K = K
-        if K_step is None:
-            K_step = .5
-        self.K_step = K_step
+        self.K_step = .5 if K_step is None else K_step
         self.offset = .5
         self.MTerm = np.round(1. / self.hp_point)
 
@@ -1464,12 +1459,11 @@ class LPFilter(object):
         b_hilbert = new_b * vec
         first_half = upsample(b_hilbert[:mid_pt], 2)
         sec_half = upsample(b_hilbert[mid_pt + 1:], 2)
-        pad = np.atleast_1d(1.)  # np.array(1.).atleast_1d
+        pad = np.atleast_1d(1.)
         # mr.upsample(self.b,2)
         b_hilbert = np.concatenate((first_half[:-1], pad, sec_half[:-1]))
         # measure stop-band performance and iterate filter length as needed.
-        (w_vec, h_log) = ret_fil_freq_resp(b_hilbert, rot_freq=True)
-
+        w_vec, h_log = ret_fil_freq_resp(b_hilbert, rot_freq=True)
         sba_approx = self.approx_sba(w_vec, h_log)
 
         return b_hilbert, sba_approx
@@ -1499,8 +1493,7 @@ class LPFilter(object):
                 response.
 
         """
-        ret_type = {'std': self.b, 'std_fp': self.b_q,
-                    'poly': self.poly_fil, 'poly_fp': self.poly_q}
+        ret_type = {'std': self.b, 'std_fp': self.b_q, 'poly': self.poly_fil, 'poly_fp': self.poly_q}
         return ret_type[str.lower(fil_type)]
 
     def ret_hp_fil(self, fil_type='std'):
@@ -1570,9 +1563,8 @@ class LPFilter(object):
         """
             Helper function produces entire impulse response plot.
         """
-        (fig, ax) = plt.subplots()
+        fig, ax = plt.subplots()
         fig.set_size_inches(16., 12.)
-        # ax.stem(self.b, '-.')
         ax = self.ret_impulse_ax(ax, lw)
 
         if title is None:
@@ -1590,7 +1582,7 @@ class LPFilter(object):
     def plot_poly_impulse(self, title=None):
 
         poly_phase = self.poly_partition(self.b)
-        (fig, ax) = plt.subplots(len(poly_phase))
+        fig, ax = plt.subplots(len(poly_phase))
         for ii, phase in enumerate(poly_phase):
             ax[ii].stem(phase, '-.')
             if title is None:
@@ -1600,8 +1592,6 @@ class LPFilter(object):
 
             ax[ii].set_xlabel(r'\sf{Tap\ Number}')
             ax[ii].set_ylabel(r'\sf{Magnitude}')
-        # setp(tup_val.markerline, 'markerfacecolor', 'b')
-        # setp(tup_val.baseline, 'color','r', 'linewidth', 2)
         fig.canvas.draw()
 
     def poly_partition(self, taps):
@@ -1668,8 +1658,7 @@ class LPFilter(object):
 
         plot_psd(ax, omega, h_log, freq_pts=freq_pts, miny=miny, maxy=maxy, titlesize=titlesize, labelsize=labelsize, title=title, xprec=3)
 
-    def plot_psd(self, title=None, miny=None, freq_vector=None, fft_size=1024,
-                 plot_on=True, savefig=False, pwr_pts=None):
+    def plot_psd(self, title=None, miny=None, freq_vector=None, fft_size=1024, plot_on=True, savefig=False, pwr_pts=None, dpi=100):
 
         """
                 Helper function that generates a Frequency response plot.
@@ -1680,9 +1669,7 @@ class LPFilter(object):
             freq_vector = np.arange(-1., 1., step)
 
         omega, h_log = self.ret_psd(self.b, freq_vector=freq_vector)
-        plot_psd_helper((omega, h_log), title=title, miny=miny, plot_on=plot_on, savefig=savefig, pwr_pts=pwr_pts, dpi=100)
-
-        # method returns freqz output of the filter
+        plot_psd_helper((omega, h_log), title=title, miny=miny, plot_on=plot_on, savefig=savefig, pwr_pts=pwr_pts, dpi=dpi)
 
     def ret_psd(self, b=None, freq_vector=None, nbins=None):
         """
@@ -1753,11 +1740,9 @@ class LPFilter(object):
         poly_fil_float = poly_fil_fi.vec * (2 ** -self.qvec_coef[1])
 
         # maximize filter output for best dynamic range
+        new_fi, msb, _ = max_filter_output(poly_fil_float, self.qvec_coef, P=self.P, input_width=self.qvec[0],
+                                           output_width=self.qvec_out[0])
 
-        (new_fi, msb, max_tuple) = max_filter_output(poly_fil_float, self.qvec_coef, P=self.P, input_width=self.qvec[0],
-                                                     output_width=self.qvec_out[0])
-
-        (s_gain, delta_gain, path_gain, bit_gain, corr_gain, corr_msb, snr_gain) = max_tuple
 
         self.poly_fi = new_fi
         self.poly_q = self.poly_fi.vec
@@ -1797,32 +1782,26 @@ class LPFilter(object):
         """
             Helper function.  Computes processing gain of filter.
         """
-
-        self.PG = (np.sum(self.b)**2.) / np.sum(self.b**2.)
-        return self.PG
+        return (np.sum(self.b)**2.) / np.sum(self.b**2.)
 
     def comp_dc_gain(self, taps=None):
         """
             Computes DC gain of filter.
         """
-        if (taps is None):
-            taps = self.b
+        taps = self.b if taps is None else taps
         return np.sum(taps)
 
     def comp_max_gain(self, taps=None):
         """
             Computes maximum possible gain of filter
         """
-        if (taps is None):
-            taps = self.b
+        taps = self.b if taps is None else taps
         return np.sum(np.abs(taps))
 
     def gen_omega(self, start_freq, stop_freq, freqz_pts=None):
 
         freqz_pts = self.freqz_pts if freqz_pts is None else freqz_pts
-        if stop_freq > 1.:
-            stop_freq = 1.
-        stop_freq = stop_freq * np.pi
+        stop_freq = np.pi if stop_freq > 1. else stop_freq * np.pi
         start_freq = start_freq * np.pi
         freq_step = ((stop_freq - start_freq) / freqz_pts)
         freq_vector = np.arange(start_freq, stop_freq, freq_step)

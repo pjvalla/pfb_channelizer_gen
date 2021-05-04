@@ -1415,4 +1415,4 @@ def gen_cic_top(path, cic_obj, count_val=1024, qvec_correction=None, prefix='', 
         fh.write('endmodule\n')
 
 
-    return (file_name, module_name, )
+    return (file_name, module_name, slicer_name, fifo_name)

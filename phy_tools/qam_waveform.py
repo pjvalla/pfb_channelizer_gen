@@ -28,6 +28,8 @@ from phy_tools.gen_utils import complex_rot
 import phy_tools.fil_utils as fil_utils
 import phy_tools.fp_utils as fp_utils
 from phy_tools.plt_utils import plot_psd_helper, plot_time_helper
+from phy_tools.demod_utils import BandEdgeFLL
+from typing import Optional, Tuple, List, Union
 
 from phy_tools import mls
 
@@ -324,7 +326,8 @@ class QAM_Mod(object):
         # compute offset to update frame starts.
         return symbols, int_step
 
-    def freq_shift(self, symbols, cen_freq):
+    @staticmethod
+    def freq_shift(symbols, cen_freq):
         """
             Helper function that provides static and sweeping
             frequency shifts of the symbols.
@@ -433,7 +436,7 @@ class QAM_Mod(object):
         # Signal Rotation -- rotate signal to specified centerFreq
         # perform frequency sweeping here if desired.
         delay_adj = self.up_rate / float(int_step)
-        signal = self.freq_shift(signal, cen_freq)
+        signal = QAM_Mod.freq_shift(signal, cen_freq)
 
         starts = [int(start * delay_adj) for start in frame_starts]
 

@@ -11,10 +11,10 @@ import scipy.signal as signal
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import matplotlib.animation as manimation
-from matplotlib.animation import MovieWriter
+# from matplotlib.animation import MovieWriter
 from collections.abc import Iterable
 
-from mpl_toolkits.mplot3d import axes3d, Axes3D
+from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 import copy
 import time
@@ -26,7 +26,7 @@ from argparse import ArgumentParser
 
 import phy_tools.fil_utils as fil_utils
 import phy_tools.fp_utils as fp_utils
-
+from phy_tools.chan_utils import calc_fft_tuser_width, gen_chan_top, gen_do_file
 from phy_tools.plt_utils import plot_psd_helper, plot_psd, gen_psd, df_str, gen_freq_vec, plot_time_sig
 from phy_tools.plt_utils import marker_list
 import phy_tools.gen_utils as gen_utils
@@ -34,18 +34,13 @@ from phy_tools.gen_utils import upsample, add_noise_pwr, write_complex_samples, 
 from phy_tools.gen_utils import gen_comp_tone, read_binary_file, compass
 from phy_tools.qam_waveform import QAM_Mod
 from phy_tools.fp_utils import nextpow2
-from phy_tools.gen_utils import ret_module_name, ret_valid_path
-from phy_tools.fp_utils import ret_num_bitsU, dec_to_ubin
 
 import phy_tools.verilog_gen as vgen
-from phy_tools.verilog_gen import name_help
 import phy_tools.verilog_filter as vfilter
 import phy_tools.adv_pfb as adv_filter
 import phy_tools.vgen_xilinx as vgenx
 
 from shutil import copyfile
-
-from IPython.core.debugger import set_trace
 
 from subprocess import check_output, CalledProcessError, DEVNULL
 try:
@@ -65,10 +60,6 @@ blockl = True
 import os
 dirname = os.path.dirname(__file__)
 GEN_2X = True
-# if gen_2X:
-#     IP_PATH = os.path.join(dirname, '../hdl/src/verilog/')
-# else:
-#     IP_PATH = os.path.join(dirname, '../hdl/src/verilog-512_1x/')
 IP_PATH = os.path.join(dirname, './chan_test/src/')
 
 if not os.path.isdir(IP_PATH):
@@ -107,6 +98,17 @@ msb_terms = OrderedDict([(8, 39), (16, 39), (32, 39), (64, 39), (128, 39),
 offset_terms = OrderedDict([(8, 0.5), (16, 0.505), (32, 0.505), (64, 0.51), (128, 0.51),
                             (256, 0.5), (512, 0.5), (1024, 0.5), (2048, 0.5)])
 
+K_terms = OrderedDict([(8, 32.458509317419505), (16, 32.458509317419505), (32, 32.458509317419505), (64, 28.697231648754062), (
+    128, 7.558755193951058885), (256, 29.755193951058885), (512, 29.755193951058885), (1024, 29.755193951058885), (2048, 29.755193951058885)])
+msb_terms = OrderedDict([(8, 39), (16, 39), (32, 39), (64, 39), (128, 39),
+                         (256, 39), (512, 39), (1024, 39), (2048, 39)])
+offset_terms = OrderedDict([(8, 0.5), (16, 0.5), (32, 0.5), (64, 0.51), (128, 0.51),
+                            (256, 0.5), (512, 0.5), (1024, 0.5), (2048, 0.5)])
+
+
+def ret_qcoef(dsp48e2):
+    return (27, 26) if dsp48e2 else (25, 24)
+
 def ret_k_terms(taps_per_phase=24):
     # if TAPS_PER_PHASE == 32:
     #     K = 21.0497
@@ -127,901 +129,7 @@ def ret_k_terms(taps_per_phase=24):
 
 rc('text', usetex=False)
 
-def gen_chan_name(chan_obj):
-    """
-        Helper function.  Generates channelizer module name based on channelizer parameters.
 
-    """
-    Mmax = chan_obj.Mmax
-    taps_per_phase = chan_obj.taps_per_phase
-    pfb_iw = chan_obj.qvec[0]
-    pfb_ow = chan_obj.qvec[0]
-    gen_2X = chan_obj.gen_2X
-
-    if gen_2X:
-        mod_name = 'chan_top_2x_{}M_{}iw_{}ow_{}tps'.format(Mmax, pfb_iw, pfb_ow, taps_per_phase)
-    else:
-        mod_name = 'chan_top_{}M_{}iw_{}ow_{}tps'.format(Mmax, pfb_iw, pfb_ow, taps_per_phase)
-
-    return mod_name
-
-def gen_chan_tb(path, chan_obj, mask_len):
-
-    assert(path is not None), 'User must specify Path'
-    path = ret_valid_path(path)
-    
-    AVG_LEN = 128
-
-    full_path = os.path.abspath(path)
-    Mmax = chan_obj.Mmax
-
-    fft_bits = ret_num_bitsU(Mmax)
-
-    chan_name = gen_chan_name(chan_obj)
-    mod_name = chan_name + '_tb'
-
-    # set payload length to yield integer number of bin cycles that yields a packet of 4096 bytes
-
-    bytes_per_vec = mask_len * 4
-    num_cycles = 4096 // bytes_per_vec
-    payload_len = num_cycles * mask_len
-    print("mask_len = {}, num_cycles = {}, payload_len = {}".format(mask_len, num_cycles, payload_len))
-
-    idx_bytes = int(np.ceil(ret_num_bitsU(Mmax - 1) / 8.))
-    tuser_bits = idx_bytes * 8 + 8
-
-    file_name = name_help(mod_name, path)
-    with open(file_name, 'w') as fh:
-
-        fh.write('// Top level testbench\n')
-        fh.write('\n')
-        fh.write('`timescale 1ns/1ps\n')
-        fh.write('\n')
-        fh.write('module {}();\n'.format(mod_name))
-        fh.write('\n')
-        fh.write('function integer clog2;\n')
-        fh.write(' //\n')
-        fh.write(' // ceiling( log2( x ) )\n')
-        fh.write(' //\n')
-        fh.write(' input integer x;\n')
-        fh.write(' begin\n')
-        fh.write('   if (x<=0) clog2 = -1;\n')
-        fh.write('   else clog2 = 0;\n')
-        fh.write('   x = x - 1;\n')
-        fh.write('   while (x>0) begin\n')
-        fh.write('     clog2 = clog2 + 1;\n')
-        fh.write('     x = x >> 1;\n')
-        fh.write('   end\n')
-        fh.write('\n')
-        fh.write(' end\n')
-        fh.write('endfunction\n')
-        fh.write('\n')
-        fh.write("localparam stimulus = \"{}/sig_tones_{}.bin\";\n".format(full_path, Mmax))
-        fh.write("localparam mask_file = \"{}/M_{}_mask.bin\";\n".format(full_path, Mmax))
-        fh.write("localparam output_file = \"{}/chan_results.bin\";\n".format(full_path))
-        fh.write('\n')
-        fh.write('integer input_descr, mask_descr, output_descr;\n')
-        fh.write('\n')
-        fh.write('initial begin\n')
-        fh.write('    input_descr = $fopen(stimulus, "rb");\n')
-        fh.write('    mask_descr = $fopen(mask_file, "rb");\n')
-        fh.write('    output_descr = $fopen(output_file, "wb");\n')
-        fh.write('end\n')
-        fh.write('\n')
-        fh.write('reg clk = 1\'b0;\n')
-        fh.write('reg sync_reset = 1\'b0;\n')
-        fh.write('\n')
-        fh.write('always #2.5 clk <= ~clk;\n')
-        fh.write('\n')
-        fh.write('wire s_axis_tvalid, s_axis_tready;\n')
-        fh.write('wire m_axis_tvalid, m_axis_tready;\n')
-        fh.write('wire [{}:0] m_axis_tuser;\n'.format(tuser_bits - 1))
-        fh.write('wire [31:0] m_axis_tdata;\n')
-        fh.write('wire m_axis_tlast;\n')
-        fh.write('\n')
-        fh.write('wire [63:0] word_cnt;\n')
-        fh.write('wire [31:0] s_axis_tdata;\n')
-        fh.write('wire eob_tag;\n')
-        fh.write('reg data_enable = 1\'b0;\n')
-        fh.write('\n')
-        fh.write('// wire s_axis_reload_tvalid;\n')
-        fh.write('// wire [31:0] s_axis_reload_tdata;\n')
-        fh.write('// wire s_axis_reload_tlast;\n')
-        fh.write('// wire s_axis_reload_tready;\n')
-        fh.write('\n')
-        fh.write('wire s_axis_select_tvalid;\n')
-        fh.write('wire [31:0] s_axis_select_tdata;\n')
-        fh.write('wire s_axis_select_tlast;\n')
-        fh.write('wire s_axis_select_tready;\n')
-        fh.write('\n')
-        fh.write('reg flow_ctrl = 1\'b0;\n')
-        fh.write('\n')
-        fh.write('localparam FFT_SIZE_WIDTH = clog2(512) + 1;\n')
-        fh.write('reg [FFT_SIZE_WIDTH-1:0] FFT_SIZE = 512;\n')
-        fh.write('\n')
-        fh.write('// reset signal process.\n')
-        fh.write('initial begin\n')
-        fh.write('  #10\n')
-        fh.write('  sync_reset = 1\'b1;\n')
-        fh.write('  #100  //repeat(10) @(posedge clk);\n')
-        fh.write('  sync_reset = 1\'b0;\n')
-        fh.write('end\n')
-        fh.write('\n')
-        fh.write('initial begin\n')
-        fh.write('    #90000  // wait 90 us to start data flowing -- allows the taps to be written.\n')
-        fh.write('    data_enable = 1\'b1;\n')
-        fh.write('end\n')
-        fh.write('\n')
-        fh.write('// flow ctrl signal\n')
-        fh.write('initial begin\n')
-        fh.write('    forever begin\n')
-        fh.write('        #50 flow_ctrl = 1\'b1;\n')
-        fh.write('        #100 flow_ctrl = 1\'b0;\n')
-        fh.write('    end\n')
-        fh.write('end\n')
-        fh.write('\n')
-        fh.write('\n')
-        fh.write('grc_word_reader #(\n')
-        fh.write('    .NUM_BYTES(4),\n')
-        fh.write('    .FRAME_SIZE(1024)\n')
-        fh.write(')\n')
-        fh.write('u_data_reader\n')
-        fh.write('(\n')
-        fh.write('  .clk(clk),\n')
-        fh.write('  .sync_reset(sync_reset),\n')
-        fh.write('  .enable_i(data_enable),\n')
-        fh.write('\n')
-        fh.write('  .fd(input_descr),\n')
-        fh.write('\n')
-        fh.write('  .valid_o(s_axis_tvalid),\n')
-        fh.write('  .word_o(s_axis_tdata),\n')
-        fh.write('  .buffer_end_o(),\n')
-        fh.write('  .len_o(),\n')
-        fh.write('  .word_cnt(),\n')
-        fh.write('\n')
-        fh.write('  .ready_i(s_axis_tready)\n')
-        fh.write(');\n')
-        fh.write('\n')
-        fh.write('grc_word_reader #(\n')
-        fh.write('    .NUM_BYTES(4),\n')
-        fh.write('    .FRAME_SIZE(1024)\n')
-        fh.write(')\n')
-        fh.write('u_mask_reader\n')
-        fh.write('(\n')
-        fh.write('  .clk(clk),\n')
-        fh.write('  .sync_reset(sync_reset),\n')
-        fh.write('  .enable_i(1\'b1),\n')
-        fh.write('\n')
-        fh.write('  .fd(mask_descr),\n')
-        fh.write('\n')
-        fh.write('  .valid_o(s_axis_select_tvalid),\n')
-        fh.write('  .word_o(s_axis_select_tdata),\n')
-        fh.write('  .buffer_end_o(s_axis_select_tlast),\n')
-        fh.write('  .len_o(),\n')
-        fh.write('  .word_cnt(word_cnt),\n')
-        fh.write('\n')
-        fh.write('  .ready_i(s_axis_select_tready)\n')
-        fh.write(');\n')
-        fh.write('\n')
-        fh.write('{} u_dut\n'.format(chan_name))
-        fh.write('(\n')
-        fh.write('   .clk(clk),\n')
-        fh.write('   .sync_reset(sync_reset),\n')
-        fh.write('\n')
-        fh.write('   .s_axis_tvalid(s_axis_tvalid),\n')
-        fh.write('   .s_axis_tdata(s_axis_tdata),\n')
-        fh.write('   .s_axis_tready(s_axis_tready),\n')
-        fh.write('\n')
-        fh.write('   .s_axis_reload_tvalid(1\'b0),\n')
-        fh.write('   .s_axis_reload_tdata(32\'d0),\n')
-        fh.write('   .s_axis_reload_tlast(1\'b0),\n')
-        fh.write('   .s_axis_reload_tready(s_axis_reload_tready),\n')
-        fh.write('\n')
-        fh.write('   .s_axis_select_tvalid(s_axis_select_tvalid),\n')
-        fh.write('   .s_axis_select_tdata(s_axis_select_tdata),\n')
-        fh.write('   .s_axis_select_tlast(s_axis_select_tlast),\n')
-        fh.write('   .s_axis_select_tready(s_axis_select_tready),\n')
-        fh.write('\n')
-        fh.write('   .fft_size({}\'d{}),\n'.format(fft_bits, Mmax))
-        fh.write('   .avg_len(9\'d{}),\n'.format(AVG_LEN))
-        fh.write('   .payload_length(16\'d{}),\n'.format(payload_len))
-        fh.write('   .eob_tag(eob_tag),\n')
-        fh.write('\n')
-        fh.write('   .m_axis_tvalid(m_axis_tvalid),\n')
-        fh.write('   .m_axis_tdata(m_axis_tdata),\n')
-        fh.write('   .m_axis_tuser(m_axis_tuser),\n')
-        fh.write('   .m_axis_tlast(m_axis_tlast),\n')
-        fh.write('   .m_axis_tready(m_axis_tready)\n')
-        fh.write(');\n')
-        fh.write('\n')
-        fh.write('wire [63:0] store_vec;\n')
-        fh.write('\n')
-        t_bits = 32 + tuser_bits + 1
-        pad_bits = 64 - t_bits
-        fh.write('assign store_vec = {{{}\'d0, m_axis_tlast, m_axis_tuser, m_axis_tdata}};\n'.format(pad_bits))
-        fh.write('\n')
-        fh.write('grc_word_writer #(\n')
-        fh.write('	.LISTEN_ONLY(0),\n')
-        fh.write('	.ARRAY_LENGTH(1024),\n')
-        fh.write('	.NUM_BYTES(8))\n')
-        fh.write('u_writer\n')
-        fh.write('(\n')
-        fh.write('  .clk(clk),\n')
-        fh.write('  .sync_reset(sync_reset),\n')
-        fh.write('  .enable(1\'b1),\n')
-        fh.write('\n')
-        fh.write('  .fd(output_descr),\n')
-        fh.write('\n')
-        fh.write('  .valid(m_axis_tvalid),\n')
-        fh.write('  .word(store_vec),\n')
-        fh.write('\n')
-        fh.write('  .wr_file(1\'b0),\n')
-        fh.write('  .word_cnt(),\n')
-        fh.write('\n')
-        fh.write('  .rdy_i(flow_ctrl),\n')
-        fh.write('  .rdy_o(m_axis_tready)\n')
-        fh.write(');\n')
-        fh.write('\n')
-        fh.write('\n')
-        fh.write('endmodule //\n')
-
-
-def calc_fft_tuser_width(Mmax):
-    idx_bytes = int(np.ceil(ret_num_bitsU(Mmax - 1) / 8.))
-    tuser_bits = idx_bytes * 8 + 8
-    return tuser_bits
-
-
-def gen_chan_top(path, chan_obj, shift_name, pfb_name, fft_name):  # gen_2X, Mmax, taps_per_phase, pfb_iw, pfb_ow):
-    assert(path is not None), 'User must specify Path'
-    path = ret_valid_path(path)
-
-    shift_name = ret_module_name(shift_name)
-    pfb_name = ret_module_name(pfb_name)
-
-    Mmax = chan_obj.Mmax
-    mod_name = gen_chan_name(chan_obj)
-    pfb_iw = chan_obj.qvec[0]
-    gen_2X = chan_obj.gen_2X
-
-    file_name = name_help(mod_name, path)
-    module_name = ret_module_name(file_name)
-
-    data_width = pfb_iw * 2
-    num_fft_sizes = int(np.log2(Mmax)) - 2
-    fft_bits = ret_num_bitsU(Mmax)
-
-    tuser_bits = calc_fft_tuser_width(Mmax)
-
-    with open(file_name, 'w') as fh:
-
-        fh.write('//***************************************************************************--\n')
-        fh.write('//\n')
-        fh.write('// Author : PJV\n')
-        fh.write('// File : channelizer_top\n')
-        fh.write('// Description : Top level wrapper for the M/2 Polyphase Channelizer bank.\n')
-        fh.write('//\n')
-        fh.write('//***************************************************************************--\n')
-        fh.write('\n')
-        fh.write('// no timescale needed\n')
-        fh.write('`include "chan_sim.vh"\n')
-        fh.write('\n')
-        fh.write('module {}\n'.format(module_name))
-        fh.write('(\n')
-        fh.write('    input clk,\n')
-        fh.write('    input sync_reset,\n')
-        fh.write('\n')
-        fh.write('    input s_axis_tvalid,\n')
-        fh.write('    // Note that the convention is Real is mapped to [2N-1:N] Imag is mapped [N-1:0], where N is sample size\n')
-        fh.write('    input [{}:0] s_axis_tdata,\n'.format(data_width - 1))
-        fh.write('    output s_axis_tready,\n')
-        fh.write('\n')
-        fh.write('    input s_axis_reload_tvalid,\n')
-        fh.write('    input [31:0] s_axis_reload_tdata,\n')
-        fh.write('    input s_axis_reload_tlast,\n')
-        fh.write('    output s_axis_reload_tready,\n')
-        fh.write('\n')
-        fh.write('    // down selection FIFO interface\n')
-        fh.write('    input s_axis_select_tvalid,\n')
-        fh.write('    input [{}:0] s_axis_select_tdata,\n'.format(data_width - 1))
-        fh.write('    input s_axis_select_tlast,\n')
-        fh.write('    output s_axis_select_tready,\n')
-        fh.write('\n')
-        fh.write('    input [{}:0] fft_size,\n'.format(fft_bits - 1))
-        fh.write('    input [8:0] avg_len,\n')
-        fh.write('    input [15:0] payload_length,\n')
-        fh.write('    output eob_tag,\n')
-        fh.write('\n')
-        fh.write('    output m_axis_tvalid,\n')
-        fh.write('    // Note that the convention is Real is mapped to [2N-1:N] Imag is mapped [N-1:0], where N is sample size\n')
-        fh.write('    output [{}:0] m_axis_tdata,\n'.format(data_width - 1))
-        fh.write('    output [{}:0] m_axis_tuser,\n'.format(tuser_bits - 1))
-        fh.write('    output m_axis_tlast,\n')
-        fh.write('    input m_axis_tready\n')
-        fh.write(');\n')
-        fh.write('\n')
-        fh.write('// currently only supporting up to 2048 bins.\n')
-        fh.write('// Average Floating Point Exponent averaging length\n')
-        fh.write('\n')
-        for i in range(num_fft_sizes):
-            fft_size = 2**(i + 3)
-            fh.write('localparam FFT_{} = {};\n'.format(fft_size, fft_size))
-
-        fh.write('localparam UPPER_IDX = {};\n'.format(data_width - 1))
-        fh.write('localparam HALF_IDX = {};\n'.format(data_width // 2))
-        fh.write('localparam LOWER_IDX = {};\n'.format(data_width // 2 - 1))
-        fh.write('\n')
-        fh.write('reg [4:0] nfft, next_nfft;\n')
-        fh.write('reg [{}:0] fft_size_s;\n'.format(fft_bits - 1))
-        fh.write('wire event_frame_started;\n')
-        fh.write('wire event_tlast_unexpected;\n')
-        fh.write('wire event_tlast_missing;\n')
-        fh.write('wire event_status_channel_halt;\n')
-        fh.write('wire event_data_in_channel_halt;\n')
-        fh.write('wire event_data_out_channel_halt;\n')
-        fh.write('\n')
-        fh.write('reg async_reset, async_reset_d1;\n')
-        fh.write('reg reset_int,  next_reset_int;\n')
-        fh.write('reg [4:0] reset_cnt, next_reset_cnt;\n')
-        fh.write('\n')
-        fh.write('localparam [4:0] RESET_ZEROS = 5\'d0;\n')
-        fh.write('localparam [4:0] RESET_HIGH_CNT = 5\'b01000;  // buffer signals\n')
-        fh.write('\n')
-        fh.write('// internal payload_length register\n')
-        fh.write('reg [15:0] payload_length_s, payload_length_m1;\n')
-        fh.write('\n')
-        fh.write('wire buffer_tvalid;\n')
-        fh.write('wire [{}:0] buffer_tdata;\n'.format(data_width - 1))
-        fh.write('wire buffer_tlast;\n')
-        fh.write('wire [{}:0] buffer_phase;\n'.format(fft_bits - 2))
-        fh.write('wire buffer_tready;\n')
-        fh.write('\n')
-        fh.write('// pfb signals\n')
-        fh.write('wire pfb_tvalid;\n')
-        fh.write('wire [{}:0] pfb_tdata, pfb_tdata_s;\n'.format(data_width - 1))
-        fh.write('wire pfb_tlast;\n')
-        fh.write('wire [{}:0] pfb_phase;\n'.format(fft_bits - 2))
-        fh.write('wire [{}:0] circ_phase;\n'.format(fft_bits - 2))
-        fh.write('wire pfb_tready;\n')
-        fh.write('\n')
-        if gen_2X:
-            fh.write('// circular buffer signals\n')
-            fh.write('wire circ_tvalid;\n')
-            fh.write('wire [{}:0] circ_tdata;\n'.format(data_width - 1))
-            fh.write('wire circ_tlast;\n')
-            fh.write('wire circ_tready;\n')
-        fh.write('\n')
-        fh.write('// fft data signals\n')
-        fh.write('wire fft_tvalid;\n')
-        fh.write('wire [{}:0] fft_tdata;\n'.format(data_width - 1))
-        fh.write('wire [{}:0] fft_tdata_s;\n'.format(data_width - 1))
-        fh.write('wire [{}:0] fft_tuser;\n'.format(tuser_bits - 1))
-        fh.write('wire fft_tlast;\n')
-        fh.write('wire fft_tready;\n')
-        fh.write('\n')
-        fh.write('// fft config signals.\n')
-        fh.write('reg fft_config_tvalid, next_fft_config_tvalid;\n')
-        fh.write('wire fft_config_tready;\n')
-        fh.write('wire [15:0] fft_config_tdata;  // fft status signals\n')
-        fh.write('\n')
-        fh.write('// exp shift signals\n')
-        fh.write('wire shift_tvalid;\n')
-        fh.write('wire [{}:0] shift_tdata;\n'.format(data_width - 1))
-        fh.write('wire [{}:0] shift_tuser;\n'.format(tuser_bits - 1))
-        fh.write('wire shift_tlast;\n')
-        fh.write('wire shift_tready;\n')
-        fh.write('wire shift_eob_tag;\n')
-        fh.write('\n')
-        fh.write('// down select signals\n')
-        fh.write('wire down_sel_tvalid;\n')
-        fh.write('wire [{}:0] down_sel_tdata;\n'.format(data_width - 1))
-        fh.write('wire [{}:0] down_sel_tuser;\n'.format(tuser_bits - 1))
-        fh.write('wire down_sel_tlast;\n')
-        fh.write('wire down_sel_tready;\n')
-        fh.write('\n')
-        fh.write('// output signals\n')
-        fh.write('wire m_axis_tvalid_s;\n')
-        fh.write('wire [{}:0] m_axis_tdata_s;\n'.format(data_width - 1))
-        fh.write('wire m_axis_tready_s;\n')
-        fh.write('wire m_axis_tlast_s;\n')
-        fh.write('wire [{}:0] m_axis_tuser_s;\n'.format(tuser_bits - 1))
-        fh.write('\n')
-        fh.write('wire [7:0] m_axis_status_tdata;\n')
-        fh.write('wire m_axis_status_tvalid;\n')
-        fh.write('wire m_axis_status_tready = 1\'b1;\n')
-        fh.write('\n')
-        fh.write('localparam S_CONFIG = 0, S_IDLE = 1;\n')
-        fh.write('reg config_state, next_config_state;\n')
-        fh.write('\n')
-        fh.write('assign m_axis_tvalid = m_axis_tvalid_s;\n')
-        fh.write('assign m_axis_tready_s = m_axis_tready;\n')
-        fh.write('assign m_axis_tdata = m_axis_tdata_s;\n')
-        fh.write('assign m_axis_tuser = m_axis_tuser_s;\n')
-        fh.write('assign m_axis_tlast = m_axis_tlast_s;\n')
-        fh.write('assign fft_config_tdata = {11\'d0,nfft};\n')
-        fh.write('assign pfb_tdata = {pfb_tdata_s[LOWER_IDX:0],pfb_tdata_s[UPPER_IDX:HALF_IDX]};\n')
-        fh.write('assign fft_tdata = {fft_tdata_s[LOWER_IDX:0],fft_tdata_s[UPPER_IDX:HALF_IDX]};\n')
-        fh.write('\n')
-        fh.write('\n')
-        fh.write('always @*\n')
-        fh.write('begin\n')
-        fh.write('    next_fft_config_tvalid = 1\'b0;\n')
-        fh.write('    next_config_state = config_state;\n')
-        fh.write('    next_nfft = nfft;\n')
-        fh.write('    case(config_state)\n')
-        fh.write('        S_CONFIG :\n')
-        fh.write('        begin\n')
-        fh.write('            if (fft_config_tready == 1\'b1) begin\n')
-        fh.write('                next_fft_config_tvalid = 1\'b1;\n')
-        fh.write('                next_config_state = S_IDLE;\n')
-        fh.write('            end\n')
-
-        fh.write('            if (fft_size == FFT_8) begin\n')
-
-        fh.write('                next_nfft = 5\'b00011;\n')
-        for i in range(1, num_fft_sizes):
-            fft_size = 2 ** (i + 3)
-            fh.write('            end else if (fft_size == FFT_{}) begin\n'.format(fft_size))
-            bin_value = dec_to_ubin(int(np.log2(fft_size)), 5)
-            fh.write('                next_nfft = 5\'b{};\n'.format(bin_value))
-        fh.write('            end else begin\n')
-        fh.write('                next_nfft = 5\'b00011;\n')
-        fh.write('            end\n')
-        fh.write('        end\n')
-        fh.write('        S_IDLE :\n')
-        fh.write('        begin\n')
-        fh.write('            if (async_reset == 1\'b1 && async_reset_d1 == 1\'b0) begin\n')
-        fh.write('                next_config_state = S_CONFIG;\n')
-        fh.write('            end else begin\n')
-        fh.write('                next_config_state = S_IDLE;\n')
-        fh.write('            end\n')
-        fh.write('        end\n')
-        fh.write('        default :\n')
-        fh.write('        begin\n')
-        fh.write('        end\n')
-        fh.write('    endcase\n')
-        fh.write('end\n')
-        fh.write('\n')
-        fh.write('always @(posedge clk, posedge sync_reset)\n')
-        fh.write('begin\n')
-        fh.write('    if (sync_reset == 1\'b1) begin\n')
-        fh.write('        config_state <= S_IDLE;\n')
-        fh.write('        fft_config_tvalid <= 1\'b0;\n')
-        fh.write('        nfft <= 5\'b00011;\n')
-        fh.write('        fft_size_s <= {}\'d8;\n'.format(fft_bits))
-        fh.write('        // default to 8\n')
-        fh.write('        reset_cnt <= 5\'d31;\n')
-        fh.write('        reset_int <= 1\'b1;\n')
-        fh.write('    end else begin\n')
-        fh.write('        config_state <= next_config_state;\n')
-        fh.write('        fft_config_tvalid <= next_fft_config_tvalid;\n')
-        fh.write('        nfft <= next_nfft;\n')
-        fh.write('        if (fft_size != 0) begin\n')
-        fh.write('            fft_size_s <= fft_size;\n')
-        fh.write('        end\n')
-        fh.write('        reset_cnt <= next_reset_cnt;\n')
-        fh.write('        reset_int <= next_reset_int;\n')
-        fh.write('    end\n')
-        fh.write('end\n')
-        fh.write('\n')
-        fh.write('always @(posedge clk)\n')
-        fh.write('begin\n')
-        fh.write('    async_reset <= !(sync_reset | reset_int);\n')
-        fh.write('    async_reset_d1 <= async_reset;\n')
-        fh.write('    payload_length_s <= payload_length;\n')
-        fh.write('    payload_length_m1 <= payload_length_s - 1;\n')
-        fh.write('end\n')
-        fh.write('\n')
-        fh.write('  // ensures that reset pulse is wide enough for all blocks.\n')
-        fh.write('always @*\n')
-        fh.write('begin\n')
-        fh.write('    next_reset_cnt = reset_cnt;\n')
-        fh.write('    if (fft_size_s != fft_size || payload_length_s != payload_length) begin\n')
-        fh.write('        next_reset_cnt = RESET_HIGH_CNT;\n')
-        fh.write('    end else if (reset_cnt != 0) begin\n')
-        fh.write('        next_reset_cnt = reset_cnt - 1;\n')
-        fh.write('    end\n')
-        fh.write('    if (reset_cnt != RESET_ZEROS) begin\n')
-        fh.write('        next_reset_int = 1\'b1;\n')
-        fh.write('    end else begin\n')
-        fh.write('        next_reset_int = 1\'b0;\n')
-        fh.write('    end\n')
-        fh.write('end\n')
-        fh.write('\n')
-        if gen_2X:
-            fh.write('input_buffer #(\n')
-        else:
-            fh.write('input_buffer_1x #(\n')
-        fh.write('    .DATA_WIDTH({}),\n'.format(data_width))
-        fh.write('    .FFT_SIZE_WIDTH({}))\n'.format(fft_bits))
-        fh.write('u_input_buffer(\n')
-        fh.write('    .clk(clk),\n')
-        fh.write('    .sync_reset(reset_int),\n')
-        fh.write('\n')
-        fh.write('    .s_axis_tvalid(s_axis_tvalid),\n')
-        fh.write('    .s_axis_tdata(s_axis_tdata),\n')
-        fh.write('    .s_axis_tready(s_axis_tready),\n')
-        fh.write('\n')
-        fh.write('    .fft_size(fft_size_s),\n')
-        fh.write('    .phase(buffer_phase),\n')
-        fh.write('\n')
-        fh.write('    .m_axis_tvalid(buffer_tvalid),\n')
-        fh.write('    .m_axis_tdata(buffer_tdata),\n')
-        fh.write('    .m_axis_final_cnt(buffer_tlast),\n')
-        fh.write('    .m_axis_tready(buffer_tready)\n')
-        fh.write(');\n')
-        fh.write('\n')
-        fh.write('{} u_pfb(\n'.format(pfb_name))
-        fh.write('    .clk(clk),\n')
-        fh.write('    .sync_reset(reset_int),\n')
-        fh.write('\n')
-        fh.write('    .s_axis_tvalid(buffer_tvalid),\n')
-        fh.write('    .s_axis_tdata(buffer_tdata),\n')
-        fh.write('    .s_axis_tlast(buffer_tlast),\n')
-        fh.write('    .s_axis_tready(buffer_tready),\n')
-        fh.write('\n')
-        fh.write('    .num_phases(fft_size_s),\n')
-        fh.write('    .phase(buffer_phase),\n')
-        fh.write('    .phase_out(pfb_phase),\n')
-        fh.write('\n')
-        fh.write('    .s_axis_reload_tvalid(s_axis_reload_tvalid),\n')
-        fh.write('    .s_axis_reload_tdata(s_axis_reload_tdata),\n')
-        fh.write('    .s_axis_reload_tlast(s_axis_reload_tlast),\n')
-        fh.write('    .s_axis_reload_tready(s_axis_reload_tready),\n')
-        fh.write('\n')
-        fh.write('    .m_axis_tvalid(pfb_tvalid),\n')
-        fh.write('    .m_axis_tdata(pfb_tdata_s),\n')
-        fh.write('    .m_axis_tlast(pfb_tlast),\n')
-        fh.write('    .m_axis_tready(pfb_tready)\n')
-        fh.write(');\n')
-        fh.write('\n')
-        if gen_2X:
-            fh.write('circ_buffer #(\n')
-            fh.write('    .DATA_WIDTH({}),\n'.format(data_width))
-            fh.write('    .FFT_SIZE_WIDTH({}))\n'.format(fft_bits))
-            fh.write('u_circ_buffer(\n')
-            fh.write('    .clk(clk),\n')
-            fh.write('    .sync_reset(reset_int),\n')
-            fh.write('\n')
-            fh.write('    .s_axis_tvalid(pfb_tvalid),\n')
-            fh.write('    .s_axis_tdata(pfb_tdata),\n')
-            fh.write('    .s_axis_tlast(pfb_tlast),\n')
-            fh.write('    .s_axis_tready(pfb_tready),\n')
-            fh.write('\n')
-            fh.write('    .fft_size(fft_size_s),\n')
-            fh.write('    .phase(pfb_phase),\n')
-            fh.write('    .phase_out(circ_phase),\n')
-            fh.write('\n')
-            fh.write('    .m_axis_tvalid(circ_tvalid),\n')
-            fh.write('    .m_axis_tdata(circ_tdata),\n')
-            fh.write('    .m_axis_tlast(circ_tlast),\n')
-            fh.write('    .m_axis_tready(circ_tready)\n')
-            fh.write(');\n')
-        fh.write('\n')
-        fh.write('{} u_fft(\n'.format(fft_name))
-        fh.write('    .aclk(clk),\n')
-        fh.write('    .aresetn(async_reset),\n')
-        fh.write('    .s_axis_config_tvalid(fft_config_tvalid),\n')
-        fh.write('    .s_axis_config_tdata(fft_config_tdata),\n')
-        fh.write('    .s_axis_config_tready(fft_config_tready),\n')
-        if gen_2X:
-            fh.write('    .s_axis_data_tvalid(circ_tvalid),\n')
-            fh.write('    .s_axis_data_tdata(circ_tdata),\n')
-            fh.write('    .s_axis_data_tlast(circ_tlast),\n')
-            fh.write('    .s_axis_data_tready(circ_tready),\n')
-        else:
-            fh.write('    .s_axis_data_tvalid(pfb_tvalid),\n')
-            fh.write('    .s_axis_data_tdata(pfb_tdata),\n')
-            fh.write('    .s_axis_data_tlast(pfb_tlast),\n')
-            fh.write('    .s_axis_data_tready(pfb_tready),\n')
-
-        fh.write('    .m_axis_data_tvalid(fft_tvalid),\n')
-        fh.write('    .m_axis_data_tdata(fft_tdata_s),\n')
-        fh.write('    .m_axis_data_tuser(fft_tuser),\n')
-        fh.write('    .m_axis_data_tlast(fft_tlast),\n')
-        fh.write('    .m_axis_data_tready(fft_tready),\n')
-        fh.write('    .m_axis_status_tvalid(m_axis_status_tvalid),\n')
-        fh.write('    .m_axis_status_tdata(m_axis_status_tdata),\n')
-        fh.write('    .m_axis_status_tready(m_axis_status_tready),\n')
-        fh.write('    .event_frame_started(event_frame_started),\n')
-        fh.write('    .event_tlast_unexpected(event_tlast_unexpected),\n')
-        fh.write('    .event_tlast_missing(event_tlast_missing),\n')
-        fh.write('    .event_status_channel_halt(event_status_channel_halt),\n')
-        fh.write('    .event_data_in_channel_halt(event_data_in_channel_halt),\n')
-        fh.write('    .event_data_out_channel_halt(event_data_out_channel_halt)\n')
-        fh.write(');\n')
-        fh.write('\n')
-        fh.write('{} #(\n'.format(shift_name))
-        fh.write(' .HEAD_ROOM(7\'d2))\n')
-        fh.write('u_shifter(\n')
-        fh.write('    .clk(clk),\n')
-        fh.write('    .sync_reset(reset_int),\n')
-        fh.write('\n')
-        fh.write('    .s_axis_tvalid(fft_tvalid),\n')
-        fh.write('    .s_axis_tdata(fft_tdata),\n')
-        fh.write('    .s_axis_tuser(fft_tuser),\n')
-        fh.write('    .s_axis_tlast(fft_tlast),\n')
-        fh.write('    .s_axis_tready(fft_tready),\n')
-        fh.write('\n')
-        fh.write('    .fft_size(fft_size_s),\n')
-        fh.write('    .avg_len(avg_len),\n')
-        fh.write('\n')
-        fh.write('    .m_axis_tvalid(shift_tvalid),\n')
-        fh.write('    .m_axis_tdata(shift_tdata),\n')
-        fh.write('    .m_axis_tuser(shift_tuser),\n')
-        fh.write('    .m_axis_tlast(shift_tlast),\n')
-        fh.write('\n')
-        fh.write('    .eob_tag(shift_eob_tag),\n')
-        fh.write('    .m_axis_tready(shift_tready)\n')
-        fh.write(');\n')
-        fh.write('\n')
-        fh.write('downselect #(\n')
-        fh.write('    .DATA_WIDTH({}))\n'.format(data_width))
-        fh.write('u_downselect(\n')
-        fh.write('    .clk(clk),\n')
-        fh.write('    .sync_reset(reset_int),\n')
-        fh.write('\n')
-        fh.write('    .s_axis_tvalid(shift_tvalid),\n')
-        fh.write('    .s_axis_tdata(shift_tdata),\n')
-        fh.write('    .s_axis_tuser(shift_tuser),\n')
-        fh.write('    .s_axis_tlast(shift_tlast),\n')
-        fh.write('    .s_axis_tready(shift_tready),\n')
-        fh.write('\n')
-        fh.write('    .eob_tag(shift_eob_tag),\n')
-        fh.write('\n')
-        fh.write('    // down selection FIFO interface\n')
-        fh.write('    .s_axis_select_tvalid(s_axis_select_tvalid),\n')
-        fh.write('    .s_axis_select_tdata(s_axis_select_tdata),\n')
-        fh.write('    .s_axis_select_tlast(s_axis_select_tlast),\n')
-        fh.write('    .s_axis_select_tready(s_axis_select_tready),\n')
-        fh.write('\n')
-        fh.write('    .m_axis_tvalid(down_sel_tvalid),\n')
-        fh.write('    .m_axis_tdata(down_sel_tdata),\n')
-        fh.write('    .m_axis_tuser(down_sel_tuser),\n')
-        fh.write('    .m_axis_tlast(down_sel_tlast),\n')
-        fh.write('    .m_axis_tready(down_sel_tready),\n')
-        fh.write('\n')
-        fh.write('    .eob_downselect(eob_tag)\n')
-        fh.write(');\n')
-        fh.write('\n')
-        fh.write('count_cycle_cw16_65 #(\n')
-        fh.write('    .DATA_WIDTH({}),\n'.format(data_width))
-        fh.write('    .TUSER_WIDTH({}))\n'.format(tuser_bits))
-        fh.write('u_final_cnt\n')
-        fh.write('(\n')
-        fh.write('    .clk(clk),\n')
-        fh.write('    .sync_reset(reset_int),\n')
-        fh.write('\n')
-        fh.write('    .s_axis_tvalid(down_sel_tvalid),\n')
-        fh.write('    .s_axis_tdata(down_sel_tdata),\n')
-        fh.write('    .cnt_limit(payload_length_m1),\n')
-        fh.write('    .s_axis_tuser(down_sel_tuser),\n')
-        fh.write('    .s_axis_tlast(down_sel_tlast),\n')
-        fh.write('    .s_axis_tready(down_sel_tready),\n')
-        fh.write('\n')
-        fh.write('    .m_axis_tvalid(m_axis_tvalid_s),\n')
-        fh.write('    .m_axis_tdata(m_axis_tdata_s),\n')
-        fh.write('    .m_axis_final_cnt(m_axis_tlast_s),\n')
-        fh.write('    .m_axis_tuser(m_axis_tuser_s),\n')
-        fh.write('    .count(),\n')
-        fh.write('    .m_axis_tlast(),\n')
-        fh.write('    .m_axis_tready(m_axis_tready_s)\n')
-        fh.write(');\n')
-        fh.write('\n')
-        fh.write('`ifdef SIM_BIN_WRITE\n')
-        fh.write('\n')
-        fh.write('    localparam buffer_out = "buffer_output.bin";\n')
-        fh.write('    localparam pfb_out = "pfb_output.bin";\n')
-        fh.write('    localparam circ_out = "circ_output.bin";\n')
-        fh.write('    localparam fft_out = "fft_output.bin";\n')
-        fh.write('    localparam exp_out = "exp_output.bin";\n')
-        fh.write('    localparam down_select_out = "down_select_output.bin";\n')
-        fh.write('    localparam final_out = "final_output.bin";\n')
-        fh.write('\n')
-        fh.write('    integer buffer_descr, pfb_descr, circ_descr, fft_descr, exp_descr, down_descr, final_descr;\n')
-        fh.write('\n')
-        fh.write('    initial begin\n')
-        fh.write('        buffer_descr = $fopen(buffer_out, "wb");\n')
-        fh.write('        pfb_descr = $fopen(pfb_out, "wb");\n')
-        fh.write('        circ_descr = $fopen(circ_out, "wb");\n')
-        fh.write('        fft_descr = $fopen(fft_out, "wb");\n')
-        fh.write('        exp_descr = $fopen(exp_out, "wb");\n')
-        fh.write('        down_descr = $fopen(down_select_out, "wb");\n')
-        fh.write('        final_descr = $fopen(final_out, "wb");\n')
-        fh.write('    end\n')
-        fh.write('\n')
-        fh.write('    wire buffer_take, pfb_take, circ_take, fft_take, exp_take, down_take, final_take;\n')
-        fh.write('\n')
-        fh.write('    wire [63:0] buffer_st_tdata;\n')
-        fh.write('    wire [63:0] pfb_st_tdata;\n')
-        fh.write('    wire [63:0] fft_st_tdata;\n')
-        fh.write('    wire [63:0] exp_st_tdata;\n')
-        fh.write('    wire [63:0] count_st_tdata;\n')
-        fh.write('    wire [31:0] circ_st_tdata;\n')
-        fh.write('    wire [63:0] exp_st_tdata;\n')
-        fh.write('    wire [63:0] down_st_tdata;\n')
-        fh.write('    wire [63:0] final_st_tdata;\n')
-        fh.write('\n')
-        buffer_pad = 64 - data_width - (fft_bits - 1)
-        fft_pad = 64 - data_width - 24
-        fh.write('    assign buffer_st_tdata = {{{}\'d0, buffer_phase, buffer_tdata}};\n'.format(buffer_pad))
-        fh.write('    assign pfb_st_tdata = {{{}\'d0, pfb_phase, pfb_tdata}};\n'.format(buffer_pad))
-        fh.write('    assign fft_st_tdata = {{{}\'d0, fft_tuser, fft_tdata}};\n'.format(fft_pad))
-        fh.write('    assign exp_st_tdata = {{{}\'d0, shift_tuser, shift_tdata}};\n'.format(fft_pad))
-        fh.write('    assign down_st_tdata = {{{}\'d0, down_sel_tuser, down_sel_tdata}};\n'.format(fft_pad))
-        fh.write('    assign final_st_tdata = {{{}\'d0, m_axis_tuser_s, m_axis_tdata_s}};\n'.format(fft_pad))
-        fh.write('\n')
-        fh.write('    assign circ_st_tdata = circ_tdata_s;\n')
-        fh.write('\n')
-        fh.write('    assign buffer_take = buffer_tvalid & buffer_tready;\n')
-        fh.write('    assign pfb_take = pfb_tvalid & pfb_tready;\n')
-        fh.write('\n')
-        fh.write('    assign circ_take = circ_tvalid & circ_tready;\n')
-        fh.write('    assign fft_take = fft_tvalid & fft_tready;\n')
-        fh.write('    assign exp_take = shift_tvalid & shift_tready;\n')
-        fh.write('    assign down_take = down_sel_tvalid & down_sel_tready;\n')
-        fh.write('    assign final_take = m_axis_tvalid_s & m_axis_tready_s;\n')
-        fh.write('\n')
-        fh.write('    grc_word_writer #(\n')
-        fh.write('        .LISTEN_ONLY(1),\n')
-        fh.write('        .ARRAY_LENGTH(1024),\n')
-        fh.write('        .NUM_BYTES(8)\n')
-        fh.write('    )\n')
-        fh.write('    u_buffer_wr\n')
-        fh.write('    (\n')
-        fh.write('        .clk(clk),\n')
-        fh.write('        .sync_reset(reset_int),\n')
-        fh.write('        .enable(1\'b1),\n')
-        fh.write('\n')
-        fh.write('        .fd(buffer_descr),\n')
-        fh.write('\n')
-        fh.write('        .valid(buffer_take),\n')
-        fh.write('        .word(buffer_st_tdata),\n')
-        fh.write('\n')
-        fh.write('        .wr_file(1\'b0),\n')
-        fh.write('\n')
-        fh.write('        .rdy_i(1\'b1),\n')
-        fh.write('        .rdy_o()\n')
-        fh.write('        );\n')
-        fh.write('\n')
-        fh.write('    grc_word_writer #(\n')
-        fh.write('        .LISTEN_ONLY(1),\n')
-        fh.write('        .ARRAY_LENGTH(1024),\n')
-        fh.write('        .NUM_BYTES(8)\n')
-        fh.write('    )\n')
-        fh.write('    u_pfb_wr\n')
-        fh.write('    (\n')
-        fh.write('        .clk(clk),\n')
-        fh.write('        .sync_reset(reset_int),\n')
-        fh.write('        .enable(1\'b1),\n')
-        fh.write('\n')
-        fh.write('        .fd(pfb_descr),\n')
-        fh.write('\n')
-        fh.write('        .valid(pfb_take),\n')
-        fh.write('        .word(pfb_st_tdata),\n')
-        fh.write('\n')
-        fh.write('        .wr_file(1\'b0),\n')
-        fh.write('\n')
-        fh.write('        .rdy_i(1\'b1),\n')
-        fh.write('        .rdy_o()\n')
-        fh.write('    );\n')
-        fh.write('\n')
-        fh.write('    grc_word_writer #(\n')
-        fh.write('        .LISTEN_ONLY(1),\n')
-        fh.write('        .ARRAY_LENGTH(1024),\n')
-        fh.write('        .NUM_BYTES(4)\n')
-        fh.write('    )\n')
-        fh.write('    u_circ_wr\n')
-        fh.write('    (\n')
-        fh.write('        .clk(clk),\n')
-        fh.write('        .sync_reset(reset_int),\n')
-        fh.write('        .enable(1\'b1),\n')
-        fh.write('\n')
-        fh.write('        .fd(circ_descr),\n')
-        fh.write('\n')
-        fh.write('        .valid(circ_take),\n')
-        fh.write('        .word(circ_st_tdata),\n')
-        fh.write('\n')
-        fh.write('        .wr_file(1\'b0),\n')
-        fh.write('\n')
-        fh.write('        .rdy_i(1\'b1),\n')
-        fh.write('        .rdy_o()\n')
-        fh.write('    );\n')
-        fh.write('\n')
-        fh.write('    grc_word_writer #(\n')
-        fh.write('        .LISTEN_ONLY(1),\n')
-        fh.write('        .ARRAY_LENGTH(1024),\n')
-        fh.write('        .NUM_BYTES(8)\n')
-        fh.write('        )\n')
-        fh.write('    u_fft_wr\n')
-        fh.write('    (\n')
-        fh.write('        .clk(clk),\n')
-        fh.write('        .sync_reset(reset_int),\n')
-        fh.write('        .enable(1\'b1),\n')
-        fh.write('\n')
-        fh.write('        .fd(fft_descr),\n')
-        fh.write('\n')
-        fh.write('        .valid(fft_take),\n')
-        fh.write('        .word(fft_st_tdata),\n')
-        fh.write('\n')
-        fh.write('        .wr_file(1\'b0),\n')
-        fh.write('\n')
-        fh.write('        .rdy_i(1\'b1),\n')
-        fh.write('        .rdy_o()\n')
-        fh.write('        );\n')
-        fh.write('\n')
-        fh.write('    grc_word_writer #(\n')
-        fh.write('        .LISTEN_ONLY(1),\n')
-        fh.write('        .ARRAY_LENGTH(1024),\n')
-        fh.write('        .NUM_BYTES(8)\n')
-        fh.write('        )\n')
-        fh.write('    u_exp_wr\n')
-        fh.write('    (\n')
-        fh.write('        .clk(clk),\n')
-        fh.write('        .sync_reset(reset_int),\n')
-        fh.write('        .enable(1\'b1),\n')
-        fh.write('\n')
-        fh.write('        .fd(exp_descr),\n')
-        fh.write('\n')
-        fh.write('        .valid(exp_take),\n')
-        fh.write('        .word(exp_st_tdata),\n')
-        fh.write('\n')
-        fh.write('        .wr_file(1\'b0),\n')
-        fh.write('\n')
-        fh.write('        .rdy_i(1\'b1),\n')
-        fh.write('        .rdy_o()\n')
-        fh.write('        );\n')
-        fh.write('\n')
-        fh.write('    grc_word_writer #(\n')
-        fh.write('        .LISTEN_ONLY(1),\n')
-        fh.write('        .ARRAY_LENGTH(1024),\n')
-        fh.write('        .NUM_BYTES(8)\n')
-        fh.write('        )\n')
-        fh.write('    u_downselect_wr\n')
-        fh.write('    (\n')
-        fh.write('        .clk(clk),\n')
-        fh.write('        .sync_reset(reset_int),\n')
-        fh.write('        .enable(1\'b1),\n')
-        fh.write('\n')
-        fh.write('        .fd(down_descr),\n')
-        fh.write('\n')
-        fh.write('        .valid(down_take),\n')
-        fh.write('        .word(down_st_tdata),\n')
-        fh.write('\n')
-        fh.write('        .wr_file(1\'b0),\n')
-        fh.write('\n')
-        fh.write('        .rdy_i(1\'b1),\n')
-        fh.write('        .rdy_o()\n')
-        fh.write('        );\n')
-        fh.write('\n')
-        fh.write('    grc_word_writer #(\n')
-        fh.write('        .LISTEN_ONLY(1),\n')
-        fh.write('        .ARRAY_LENGTH(1024),\n')
-        fh.write('        .NUM_BYTES(8)\n')
-        fh.write('        )\n')
-        fh.write('    u_final_wr\n')
-        fh.write('    (\n')
-        fh.write('        .clk(clk),\n')
-        fh.write('        .sync_reset(reset_int),\n')
-        fh.write('        .enable(1\'b1),\n')
-        fh.write('\n')
-        fh.write('        .fd(final_descr),\n')
-        fh.write('\n')
-        fh.write('        .valid(final_take),\n')
-        fh.write('        .word(final_st_tdata),\n')
-        fh.write('\n')
-        fh.write('        .wr_file(1\'b0),\n')
-        fh.write('\n')
-        fh.write('        .rdy_i(1\'b1),\n')
-        fh.write('        .rdy_o()\n')
-        fh.write('        );\n')
-        fh.write('\n')
-        fh.write('`endif\n')
-        fh.write('\n')
-        fh.write('\n')
-        fh.write('endmodule\n')
-
-    return file_name
 
 class Channelizer(object):
     """
@@ -1094,12 +202,12 @@ class Channelizer(object):
 
         return 0
 
-    def gen_psd(self, fft_size=1024, taps=None, freq_vector=None):
+    def gen_psd(self, fft_size=1024, taps=None, freq_vector=None, fixed_taps=False):
         """
             Helper generates the PSD of the baseband filter
         """
         if taps is None:
-            taps = self.taps
+            taps = self.taps_fi if fixed_taps else self.taps
 
         step = 2. / fft_size
         if freq_vector is None:
@@ -1216,7 +324,7 @@ class Channelizer(object):
                 poly_fil = poly_fil >> diff
                 msb = desired_msb
 
-        taps_fi = np.reshape(poly_fil, (1, -1), order='F')
+        taps_fi = np.reshape(poly_fil, (1, -1), order='F').flatten()
         self.taps_fi = taps_fi
         self.poly_fil_fi = poly_fil
         self.poly_fil = poly_fil * (2 ** -self.qvec_coef[1])
@@ -1320,7 +428,7 @@ class Channelizer(object):
             offset_terms[M] = filter_obj.offset
             taps = self.gen_float_taps(self.gen_2X, K_terms, offset_terms, M)
             msb_terms[M] = self.pfb_msb
-            # use optimized paramater as the first guess on the next filter
+            # use optimized parameter as the first guess on the next filter
             K_step = .01
             K_init = filter_obj.K
             self.gen_fixed_filter(taps)
@@ -1431,7 +539,7 @@ class Channelizer(object):
         pfb_fil = pfb_fil.T
         vec = np.array([])
         pad = np.array([0] * (self.Mmax - self.M))
-        for i, col in enumerate(pfb_fil):
+        for col in pfb_fil:
             col_vec = np.concatenate((col, pad))
             vec = np.concatenate((vec, col_vec))
 
@@ -1836,7 +944,6 @@ class Channelizer(object):
             fig.savefig('Properties.png', figsize=(12, 10))
 
 
-
 def gen_test_sig(fft_size, file_name=None, bursty=False, bins=[0, 3, 4, 7], sig_bws = [.1, .10, .05, .125], amps = [.2, .5, .7, .3], roll=[1000, 3000, 4000, 5000]):
 
     cen_freqs = Channelizer.conv_bins_to_centers(fft_size, bins)    
@@ -1877,34 +984,6 @@ def gen_test_sig(fft_size, file_name=None, bursty=False, bins=[0, 3, 4, 7], sig_
     plot_psd_helper(sig_fi.vec, title='Input Spectrum', savefig=True, plot_time=True, dpi=100)
     write_complex_samples(sig_fi.vec, file_name, False, 'h', big_endian=True)
     plt.show()
-
-
-def test_8_chan():
-
-    plt.close('all')
-    gen_test_sig(4, GEN_2X)
-
-    M = 8
-    chan = Channelizer(M=M, gen_2X=GEN_2X, qvec=QVEC, qvec_coef=QVEC_COEF, fc_scale=FC_SCALE, taps=TAPS)
-
-    # generate test signal.
-    file_name = SIM_PATH + 'sig_store_{}_float3.bin'.format(M)
-    sig = read_complex_samples(file_name, q_first=False, format_str='h', offset=0, num_samps=None, big_endian=True)
-
-    plot_psd_helper(sig, title='Input Signal', w_time=True, savefig=True)
-
-    chan_out = chan.analysis_bank(sig, plot_out=True)
-    chan.gen_tap_roms()
-    ser_sig = np.reshape(chan_out, (1, -1), order='F').flatten()
-    plot_psd_helper(ser_sig, title='PFB Signal', w_time=True, savefig=True)
-    orig_sig = chan.synthesis_bank(ser_sig, plot_out=False)
-    plot_psd_helper(orig_sig, title='Final Signal', w_time=True, savefig=True)
-
-    for i, chan_sig in enumerate(chan_out):
-        str_val = 'Channel - {}'.format(i)
-        plot_psd_helper(chan_sig, title=str_val, w_time=True, savefig=True)
-
-    chan.plot_filter()
 
 
 def gen_corr_table(num_bits=6):
@@ -1949,29 +1028,11 @@ def gen_samp_delay_coe(M):
     fp_utils.coe_write(fi_obj, radix=16, file_name=file_name, filter_type=True)
 
 
-def test_256_chan(gen_taps=False):
+def gen_taps(M, Mmax=512, taps_per_phase=TAPS_PER_PHASE, dsp48e2=False):
 
-    plt.close('all')
-
-    M = 256
-    chan = Channelizer(M=M, gen_2X=GEN_2X, taps_per_phase=TAPS_PER_PHASE, desired_msb=PFB_MSB,
-                       qvec=QVEC, qvec_coef=QVEC_COEF, fc_scale=FC_SCALE, taps=TAPS)
-    # chan.gen_properties(plot_on=False)
-
-    file_name = SIM_PATH + '/sig_store_{}_taps.bin'.format(M)
-    sig = read_complex_samples(file_name, False, 'f')
-
-    print("Filter MSB = {}".format(chan.fil_msb))
-
-    # generate test signal.
-    chan_out = chan.analysis_bank(sig, plot_out=True)  #analysis:ignore
-    chan.plot_filter()
-
-
-def gen_taps(M, Mmax=512, gen_2X=True, taps_per_phase=TAPS_PER_PHASE, pfb_msb=40):
-
+    qvec_coef = ret_qcoef(dsp48e2)
     chan = Channelizer(M=M, Mmax=Mmax, gen_2X=GEN_2X, taps_per_phase=taps_per_phase,
-                       desired_msb=PFB_MSB, qvec=QVEC, qvec_coef=QVEC_COEF, fc_scale=FC_SCALE, taps=TAPS)
+                       desired_msb=PFB_MSB, qvec=QVEC, qvec_coef=qvec_coef, fc_scale=FC_SCALE)
     print("Filter MSB = {}".format(chan.fil_msb))
     path = SIM_PATH
     file_name = path + 'M_{}_taps.bin'.format(M)
@@ -1979,44 +1040,14 @@ def gen_taps(M, Mmax=512, gen_2X=True, taps_per_phase=TAPS_PER_PHASE, pfb_msb=40
     chan.gen_tap_file(file_name)
 
 
-# def gen_logic(M, gen_2X=True, taps_per_phase=TAPS_PER_PHASE, sample_width=18):
-
-#     # from cStringIO import StringIO
-#     import shutil
-#     import phy_tools.fil_utils as fil_utils
-
-#     plt.close('all')
-
-#     chan = Channelizer(M=M, gen_2X=GEN_2X, taps_per_phase=TAPS_PER_PHASE, desired_msb=pfb_msb,
-#                        qvec=qvec, qvec_coef=QVEC_COEF, fc_scale=FC_SCALE)
-#     gen_taps(M, gen_2X, taps_per_phase)
-
-#     print("Filter MSB = {}".format(chan.filter.msb))
-
-#     # c_str = StringIO()
-#     # c_str.reset()
-#     # # store c_str to file.
-#     # with open('../verilog/file.xml', 'w') as fh:
-#     #     c_str.seek(0)
-#     #     shutil.copyfileobj(c_str, fh)
-
-#     # generate half-band filter
-#     fil_obj = fil_utils.LPFilter(num_taps=40, half_band=True)
-#     fil_obj.gen_fixed_filter(coe_file=IP_PATH + '/hb_fil/hb_fil.coe')
-
-#     print("HB Filter MSB = {}".format(fil_obj.msb))
-
-#     fil_obj.plot_psd()
-
-
 def populate_fil_table(start_size=8, end_size=2048, taps_per_phase=TAPS_PER_PHASE, fc_scale=FC_SCALE, 
-                       gen_2X=GEN_2X, tbw_scale=TBW_SCALE, freqz_pts=10_000):
+                       gen_2X=GEN_2X, tbw_scale=TBW_SCALE, freqz_pts=10_000, qvec=QVEC, qvec_coef=QVEC_COEF):
 
     # K_init = 20. if gen_2X else 40.
     K_init = 40.
 
-    chan = Channelizer(M=8, gen_2X=gen_2X, taps_per_phase=taps_per_phase, qvec=QVEC,
-                       qvec_coef=QVEC_COEF, fc_scale=fc_scale, tbw_scale=tbw_scale, taps=TAPS, freqz_pts=freqz_pts)
+    chan = Channelizer(M=8, gen_2X=gen_2X, taps_per_phase=taps_per_phase, qvec=qvec, qvec_coef=qvec_coef,
+                       fc_scale=fc_scale, tbw_scale=tbw_scale, freqz_pts=freqz_pts)
 
     K_terms, msb_terms, offset_terms = chan.gen_fil_params(start_size, end_size, fc_scale=fc_scale, K_init=K_init, 
                                                            tbw_scale=tbw_scale)
@@ -2028,8 +1059,7 @@ def populate_fil_table(start_size=8, end_size=2048, taps_per_phase=TAPS_PER_PHAS
     return K_terms, msb_terms, offset_terms
 
 def gen_animation():
-    chan_obj = Channelizer(M=4, taps_per_phase=TAPS_PER_PHASE, gen_2X=False, qvec=QVEC,
-                           qvec_coef=QVEC_COEF, fc_scale=FC_SCALE, taps=TAPS)
+    chan_obj = Channelizer(M=4, taps_per_phase=TAPS_PER_PHASE, gen_2X=False, qvec=QVEC, fc_scale=FC_SCALE)
     chan_obj.gen_animation()
 
 def find_best_terms(gen_2X=True, qvec=QVEC):
@@ -2037,7 +1067,7 @@ def find_best_terms(gen_2X=True, qvec=QVEC):
     # M = 2 ** np.arange(2, 7)
     M = 64
     chan_obj = Channelizer(M=M, taps_per_phase=TAPS_PER_PHASE, gen_2X=GEN_2X, qvec=QVEC,
-                           qvec_coef=QVEC_COEF, fc_scale=FC_SCALE, tbw_scale=TBW_SCALE, K_terms=K_default, taps=TAPS)
+                           fc_scale=FC_SCALE, tbw_scale=TBW_SCALE, K_terms=K_default, )
 
     K_terms, msb_terms, offset_terms = chan_obj.gen_fil_params(8, 2048)
 
@@ -2045,7 +1075,7 @@ def find_best_terms(gen_2X=True, qvec=QVEC):
     print("msb_terms = {}".format(msb_terms))
     print("offset_terms = {}".format(offset_terms))
 
-def gen_input_buffer(Mmax=512, path=IP_PATH):
+def gen_input_buffer(Mmax=512, path=IP_PATH, gen_2X=False):
 
     cnt_width = 16  #  input buffers are fixed code -- always use 16 bit counters
     print("==========================")
@@ -2053,13 +1083,17 @@ def gen_input_buffer(Mmax=512, path=IP_PATH):
     print("")
     ram_out = vgen.gen_ram(path, ram_type='dp', memory_type='read_first', ram_style='block')
     print(ram_out)
-    cnt_in = vgen.gen_aligned_cnt(path, cnt_width=cnt_width, tuser_width=0, tlast=False, start_sig=False, dwn_cnt=True)
+    cnt_in, in_fifo = vgen.gen_aligned_cnt(path, cnt_width=cnt_width, tuser_width=0, tlast=False, start_sig=False, dwn_cnt=True)
     print(cnt_in)
-    cnt_out = vgen.gen_aligned_cnt(path, cnt_width=cnt_width, tuser_width=0, tlast=False, start_sig=True, use_af=True,
+    cnt_out, out_fifo = vgen.gen_aligned_cnt(path, cnt_width=cnt_width, tuser_width=0, tlast=False, start_sig=True, use_af=True,
                                    almost_full_thresh=16, fifo_addr_width=5)
     print(cnt_out)
     print("==========================")
     print("")
+    name = "input_buffer_1x" if gen_2X is False else "input_buffer"
+    return name, cnt_in, cnt_out, in_fifo, out_fifo
+
+
 
 def gen_output_buffer(Mmax=512, path=IP_PATH):
 
@@ -2097,10 +1131,11 @@ def gen_downselect(Mmax=512, path=IP_PATH):
     print("")
     tuser_bits = calc_fft_tuser_width(Mmax)
     print("tuser_bits = {}".format(tuser_bits))
-    downselect = adv_filter.gen_down_select(path, name='downselect', num_channels=Mmax, tuser_width=tuser_bits)
+    downselect, mux_out = adv_filter.gen_down_select(path, name='downselect', num_channels=Mmax, tuser_width=tuser_bits)
     print(downselect)
     print("==========================")
     print("")
+    return downselect, mux_out
 
 def gen_mux(Mmax=512, path=IP_PATH):
     print("==========================")
@@ -2111,8 +1146,9 @@ def gen_mux(Mmax=512, path=IP_PATH):
     print(mux_out)
     print("==========================")
     print("")
+    return mux_out
 
-def gen_pfb(chan_obj, path=IP_PATH, fs=6.4E6):  # Mmax=512, pfb_msb=40, M=512, taps=None, gen_2X=GEN_2X):
+def gen_pfb(chan_obj, path=IP_PATH, fs=6.4E6, dsp48e2=False):  # Mmax=512, pfb_msb=40, M=512, taps=None, gen_2X=GEN_2X):
     """
         Generates the logic for the Polyphase Filter bank
     """
@@ -2125,8 +1161,9 @@ def gen_pfb(chan_obj, path=IP_PATH, fs=6.4E6):  # Mmax=512, pfb_msb=40, M=512, t
     print("K terms = {}".format(chan_obj.K))
     print("fc_scale = {}".format(FC_SCALE))
     pfb_fil = chan_obj.poly_fil_fi
-    pfb_reshape = pfb_fil.T.flatten() 
-    qvec_int = (QVEC_COEF[0], 0)
+    pfb_reshape = pfb_fil.T.flatten()
+    qvec_coef = ret_qcoef(dsp48e2) 
+    qvec_int = (qvec_coef[0], 0)
     taps_fi = fp_utils.ret_dec_fi(pfb_reshape, qvec_int)
 
     mid_pt = len(taps_fi.vec) // 2
@@ -2143,12 +1180,11 @@ def gen_pfb(chan_obj, path=IP_PATH, fs=6.4E6):  # Mmax=512, pfb_msb=40, M=512, t
 
     pfb_out = adv_filter.gen_pfb(path, chan_obj.Mmax, taps_fi, input_width=chan_obj.qvec[0], output_width=chan_obj.qvec[0],
                                  taps_per_phase=chan_obj.taps_per_phase, pfb_msb=chan_obj.pfb_msb, 
-                                 tlast=True, tuser_width=0,
-                                 ram_style='block', prefix='', gen_2X=chan_obj.gen_2X)
+                                 tlast=True, tuser_width=0, ram_style='block', prefix='', gen_2X=chan_obj.gen_2X, dsp48e2=dsp48e2)
 
     print(pfb_out)
     print("==========================")
-    return pfb_out[0]
+    return pfb_out
 
 def gen_circ_buffer(Mmax=512, path=IP_PATH):
     print("======================")
@@ -2160,6 +1196,7 @@ def gen_circ_buffer(Mmax=512, path=IP_PATH):
     print(fifo_out)
     print("======================")
     print("")
+    return fifo_out
 
 def gen_final_cnt(path=IP_PATH):
     print("======================")
@@ -2169,6 +1206,7 @@ def gen_final_cnt(path=IP_PATH):
     print(final_cnt)
     print("======================")
     print("")
+    return final_cnt
 
 
 def gen_exp_shifter(chan_obj, avg_len=16, path=IP_PATH):
@@ -2182,10 +1220,9 @@ def gen_exp_shifter(chan_obj, avg_len=16, path=IP_PATH):
     qvec_in = (fft_shift_bits, 0)
     qvec_out = (fft_shift_bits + frac_bits, frac_bits)
     cic_obj = fil_utils.CICDecFil(M=avg_len, N=1, qvec_in=qvec_in, qvec_out=qvec_out)
-    fil_out = vfilter.gen_cic_top(path, cic_obj, count_val=0, prefix='', tuser_width=0)
-    fil_msb = fft_shift_bits + table_bits - 1
-
-    fi_obj = fp_utils.ret_dec_fi([1.] * avg_len, qvec=(25, 0), overflow='wrap', signed=1)
+    _, cic_name, slicer_name, cic_fifo = vfilter.gen_cic_top(path, cic_obj, count_val=0, prefix='', tuser_width=0)
+    # fil_msb = fft_shift_bits + table_bits - 1
+    # fi_obj = fp_utils.ret_dec_fi([1.] * avg_len, qvec=(25, 0), overflow='wrap', signed=1)
 
     # generate fifo
     fifo_out = vgen.gen_axi_fifo(path, tuser_width=24, tlast=True, almost_full=True, ram_style='distributed')    
@@ -2197,7 +1234,7 @@ def gen_exp_shifter(chan_obj, avg_len=16, path=IP_PATH):
     print(exp_out)
     print("================================")
     print("")
-    return exp_out
+    return exp_out, cic_name, cic_fifo, slicer_name, fifo_out
 
 def gen_tones(M=512, lidx=30, ridx=31, offset=0, path=SIM_PATH):
 
@@ -2361,7 +1398,7 @@ def process_inbuff(file_name):
     comp_sig = i_sig + 1j * q_sig
     plot_psd_helper(comp_sig, w_time=True, savefig=True, title='Input Buffer', miny=-80)
 
-def process_chan_out(file_name, iq_offset=10*TAPS_PER_PHASE, Mmax=64):
+def process_chan_out(file_name, iq_offset=10*TAPS_PER_PHASE, Mmax=64, plot_on=False, dpi=100):
     """
         Helper function that ingests and plots the output of the channelizer from an RTL simulation.
     """
@@ -2379,10 +1416,8 @@ def process_chan_out(file_name, iq_offset=10*TAPS_PER_PHASE, Mmax=64):
     mask_i = np.uint64(((1 << 16) - 1) << 16)
     mask_q = np.uint64((1 << 16) - 1)
     mask_tuser = np.uint64(((1 << tuser_bits) - 1) << 32)
-    mask_fft_bin = int(((1 << int(np.log2(Mmax-1))) -1))
+    mask_fft_bin = int(((1 << int(np.log2(Mmax))) -1))
     mask_tlast = np.uint64(1 << 32 + tuser_bits)
-
-    # ipdb.set_trace()
 
     i_sig = [(int(samp & mask_i) >> 16) for samp in samps]
     q_sig = [(samp & mask_q)  for samp in samps]
@@ -2411,12 +1446,6 @@ def process_chan_out(file_name, iq_offset=10*TAPS_PER_PHASE, Mmax=64):
         # print(len(iq_temp))
         samp_lists.append(iq_temp)
 
-    # comp_sig = i_sig.vec + 1j * q_sig.vec
-    # ipdb.set_trace()
-    # comp_rsh = np.reshape(comp_sig, (M, -1), 'F')
-    # pickle.dump(comp_rsh, open('rtl_output.p', 'wb'))
-    # print(np.shape(comp_rsh))
-
     resps = []
     wvecs = []
     time_sigs = []
@@ -2434,34 +1463,15 @@ def process_chan_out(file_name, iq_offset=10*TAPS_PER_PHASE, Mmax=64):
         res_value = np.max(psd)
         print("Bin {} \t: Largest value = {:.4f}, i{:.4f} - resp = {:.4f} db".format(bin_num, real_value, imag_value, res_value))
 
-    # title = 'Channelized Output'
-    # fig, ax = plt.subplots(nrows=3, ncols=2)
-    # fig.subplots_adjust(bottom=.10, left=.1, top=.95)
-    # fig.subplots_adjust(hspace=.50, wspace=.2)
-    # fig.set_size_inches(12., 12.)
-    # fig.set_dpi(120)
-    # print("wvecs  shape = {}".format(np.shape(wvecs)))
-    # plot_psd(ax[0][0], wvecs[40], resps[40], title='Channel 0', miny=-120, maxy=10)
-    # plot_psd(ax[0][1], wvecs[42], resps[42], title='Channel 1', miny=-120, maxy=10)
-    # plot_psd(ax[1][0], wvecs[43], resps[41], title='Channel 2', miny=-120, maxy=10)
-    # plot_psd(ax[1][1], wvecs[44], resps[44], title='Channel 3', miny=-120, maxy=10)
-    # plot_psd(ax[2][0], wvecs[45], resps[45], title='Channel 4', miny=-120, maxy=10)
-    # plot_psd(ax[2][1], wvecs[46], resps[46], title='Channel 5', miny=-120, maxy=10)
-
-    # file_name = copy.copy(title)
-    # file_name = ''.join(e if e.isalnum() else '_' for e in file_name)
-    # file_name += '.png'
-    # file_name = file_name.replace("__", "_")
-    # print(file_name)
-    # fig.savefig(file_name)
-
-    mpl.use('Agg')
+    if plot_on is False:
+        mpl.use('Agg')
     # sig_list = np.arange(0, M).tolist()
     # sig_list = np.arange(35, 51).tolist()  #[41, 42, 43, 44, 45, 46]
     for j, bin_num in enumerate(bin_list):
         plot_psd_helper((wvecs[j], resps[j]), title=r'$\sf{{PSD\ Overlay\ {}}}$'.format(bin_num), plot_time=True, miny=-150, maxy=20.,
-                        time_sig=time_sigs[j], markersize=None, plot_on=False, savefig=True, ytime_min=-1., ytime_max=1.)
-        plt.close('all')
+                        time_sig=time_sigs[j], markersize=None, plot_on=plot_on, savefig=True, ytime_min=-1., ytime_max=1., dpi=dpi)
+        if plot_on is False:
+            plt.close('all')
 
 
 def process_synth_out(file_name, row_offset=600):
@@ -2503,8 +1513,7 @@ def process_synth_out(file_name, row_offset=600):
 def gen_mask_files(M_list, percent_active=None, values=[42, 43, 44, 45, 46], path=SIM_PATH):
     bin_list = []
     for M in M_list:
-        chan_obj = Channelizer(M=M, taps_per_phase=TAPS_PER_PHASE, gen_2X=GEN_2X, taps=TAPS,
-                               desired_msb=DESIRED_MSB, qvec=QVEC, qvec_coef=QVEC_COEF, fc_scale=FC_SCALE)
+        chan_obj = Channelizer(M=M, taps_per_phase=TAPS_PER_PHASE, gen_2X=GEN_2X)
         file_name = path + 'M_{}_mask.bin'.format(M)
         bin_values = chan_obj.gen_mask_file(file_name, percent_active, values)
         bin_list.append(bin_values)
@@ -2514,10 +1523,10 @@ def gen_mask_files(M_list, percent_active=None, values=[42, 43, 44, 45, 46], pat
 def gen_tap_plots(M_list):
 
     for M in M_list:
-        chan_obj = Channelizer(M=M, taps_per_phase=TAPS_PER_PHASE, gen_2X=GEN_2X, K=K_default, taps=TAPS, 
-                               desired_msb=DESIRED_MSB, qvec=QVEC, qvec_coef=QVEC_COEF, fc_scale=FC_SCALE)
+        chan_obj = Channelizer(M=M, taps_per_phase=TAPS_PER_PHASE, gen_2X=GEN_2X, K=K_default, 
+                               desired_msb=DESIRED_MSB, fc_scale=FC_SCALE)
         # chan_obj.plot_psd_single(savefig=True)
-        gen_taps(M, M_MAX, gen_2X=GEN_2X, taps_per_phase=TAPS_PER_PHASE, pfb_msb=DESIRED_MSB)
+        gen_taps(M, M_MAX, taps_per_phase=TAPS_PER_PHASE)
         print(chan_obj.pfb_msb)
         tap_title = 'taps psd M {}'.format(M)
         # get adjacent bins and plot suppression value.
@@ -2563,13 +1572,16 @@ def gen_logic(chan_obj, path=IP_PATH, avg_len=256, fs=6.4E6):
     sample_fi = fp_utils.ret_dec_fi(0, qvec=chan_obj.qvec, overflow='wrap', signed=1)
     sample_fi.gen_full_data()
     # gen_output_buffer(chan_obj.Mmax, path)  only used in synthesis bank.
-    gen_exp_shifter(chan_obj, avg_len, path=path)
-    gen_input_buffer(chan_obj.Mmax, path)
-    gen_circ_buffer(chan_obj.Mmax, path)
-    gen_pfb(chan_obj, path, fs=fs)
+    exp_name, cic_name = gen_exp_shifter(chan_obj, avg_len, path=path)
+    inbuff_name, inbuff_cnt_in, inbuff_cnt_out = gen_input_buffer(chan_obj.Mmax, path)
+    circbuff_name = gen_circ_buffer(chan_obj.Mmax, path)
+    pfb_name = gen_pfb(chan_obj, path, fs=fs)
     gen_downselect(chan_obj.Mmax, path)
     gen_final_cnt(path)
     print(chan_obj.Mmax)
+
+
+    return exp_name, cic_name, inbuff_name, circbuff_name, pfb_name
 
 def get_args():
 
@@ -2582,6 +1594,7 @@ def get_args():
     gen_2X = False
     taps_per_phase = 16
     Mmax = 512
+    dsp48e2 = False
 
     parser = ArgumentParser(description='Channelizer CLI -- Used to generate RTL code, input stimulus, and process output of RTL simulation.')
     parser.add_argument('-l', '--generate_logic', action='store_true', help='Generates RTL Logic for modules, FIFOs, DSP48, CIC filters, etc, to be used in exp_shifter.vhd, input_buffer.vhd, circ_buffer.vhd, and the PFB module')
@@ -2601,8 +1614,13 @@ def get_args():
     parser.add_argument('--gen-2X', action='store_true', help='Flag indicates that a M/2 Channelizer is desired')
     parser.add_argument('--Mmax', type=str, help='Maximum decimation of desired channelizer')
     parser.add_argument('--tps', type=str, help='Specify Taps Per PFB Phase (tps)')
+    parser.add_argument('--e2', action='store_true',  help='Specify using DSP48E2 modules')
 
     args = parser.parse_args()
+
+    if args.e2:
+        dsp48e2 = True
+
     if args.gen_2X:
         gen_2X = True
 
@@ -2616,25 +1634,32 @@ def get_args():
         gen_tones(M=512, lidx=30, ridx=31, offset=0.00050)
 
     if args.generate_logic:
+        qvec_coef = ret_qcoef(dsp48e2)
         chan_obj = Channelizer(M=Mmax, taps_per_phase=taps_per_phase, gen_2X=gen_2X, desired_msb=DESIRED_MSB, qvec=QVEC, 
-                               qvec_coef=QVEC_COEF, fc_scale=FC_SCALE, taps=TAPS)
+                               qvec_coef=qvec_coef, fc_scale=FC_SCALE, taps=TAPS)
 
         sample_fi = fp_utils.ret_dec_fi(0, qvec=QVEC, overflow='wrap', signed=1)
         sample_fi.gen_full_data()
-        gen_output_buffer(Mmax)
-        shift_name = gen_exp_shifter(chan_obj, avg_len, sample_fi=sample_fi)
-        gen_input_buffer(Mmax)
+        # gen_output_buffer(Mmax)
+        exp_tuple = gen_exp_shifter(chan_obj, avg_len) #, sample_fi=sample_fi)
+        # exp_name, cic_name, cic_fifo, slicer_name, exp_fifo
+        inbuff_tuple = gen_input_buffer(Mmax, gen_2X=gen_2X)
+        # inbuff_name, inbuff_cnt_in, inbuff_cnt_out, in_fifo, out_fifo = inbuff_tuple
         gen_circ_buffer(Mmax)
-        pfb_name = gen_pfb(chan_obj)
-        gen_downselect(Mmax)
-        gen_final_cnt()
-        adv_filter.gen_chan_top(IP_PATH, chan_obj, shift_name, pfb_name)
+        pfb_tuple = gen_pfb(chan_obj)
+        down_tuple = gen_downselect(Mmax)
+        gen_mux(Mmax)
+        final_cnt_name = gen_final_cnt()
+        fft_name = f'xfft_{Mmax}'
+        chan_name, _ = gen_chan_top(IP_PATH, chan_obj, exp_tuple[0], pfb_tuple[0], fft_name)
         if chan_obj.gen_2X:
             copyfile('./verilog/circ_buffer.v', IP_PATH + '/circ_buffer.v')
             copyfile('./verilog/input_buffer.v', IP_PATH + '/input_buffer.v')
         else:
             copyfile('./verilog/input_buffer_1x.v', IP_PATH + '/input_buffer_1x.v')
         print(Mmax)
+
+        gen_do_file(IP_PATH, Mmax, gen_2X, chan_name, exp_tuple, inbuff_tuple, pfb_tuple, down_tuple, final_cnt_name)
 
     if args.rtl_chan_outfile is not None:
         if args.rtl_chan_outfile.lower() != 'default':
@@ -2673,8 +1698,9 @@ def get_args():
         msb_terms = OrderedDict([(128, 39)])
         offset_terms = OrderedDict([(8, 0.5), (16, 0.5), (128, 0.5)])
 
-        # chan = Channelizer(M=M, gen_2X=gen_2X, qvec=QVEC, qvec_coef=QVEC_COEF, fc_scale=FC_SCALE, taps=TAPS)
-        chan = Channelizer(M=M, gen_2X=gen_2X, qvec=QVEC, qvec_coef=QVEC_COEF, K_terms=K_terms,
+        qvec_coef = ret_qcoef(dsp48e2)
+
+        chan = Channelizer(M=M, gen_2X=gen_2X, qvec=QVEC, qvec_coef=qvec_coef, K_terms=K_terms,
                            offset_terms=offset_terms, desired_msb=39)
         vec = read_complex_samples(args.process_input, q_first=False) * (2 ** -15)
         # vec = np.fromfile(args.process_input, dtype=np.complex64)
@@ -2715,7 +1741,7 @@ def get_args():
         print("wvecs  shape = {}".format(np.shape(wvecs)))
         title = 'Channelizer Output'
         time_title = 'Channelizer Output time'
-        chan_list = [4, 48, 96, 97, 98, 123, 124]
+        chan_list = [4, 5, 48, 96, 97, 98, 123, 124]
         marker_idx = 0
         style_list = ['solid', 'dash', 'dashdot']
         style_idx = 0
@@ -2774,12 +1800,12 @@ def get_args():
 
 if __name__ == "__main__":
 
-    chan_list = [4, 48, 96, 97, 98, 123, 124]
-    sig_bws = np.linspace(.001, .004, len(chan_list)).tolist()
-    amps = np.linspace(.2, .5, len(chan_list)).tolist()
-    roll_values = np.linspace(1000, 5000, len(chan_list))
-    roll_values = [int(value) for value in roll_values]
-    gen_test_sig(128, './rw_test.bin', False, chan_list, sig_bws, amps, roll_values)
+    # chan_list = [4, 48, 96, 97, 98, 123, 124]
+    # sig_bws = np.linspace(.001, .004, len(chan_list)).tolist()
+    # amps = np.linspace(.2, .5, len(chan_list)).tolist()
+    # roll_values = np.linspace(1000, 5000, len(chan_list))
+    # roll_values = [int(value) for value in roll_values]
+    # gen_test_sig(128, './rw_test.bin', False, chan_list, sig_bws, amps, roll_values)
 
-    # modem_args = get_args()
+    modem_args = get_args()
     plt.show(block=blockl)

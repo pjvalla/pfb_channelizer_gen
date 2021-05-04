@@ -14,8 +14,8 @@ import re
 import scipy.signal as signal
 import struct
 from itertools import count
-from numba import njit
 from scipy.special import erfc, comb
+from numba import njit
 import os
 from subprocess import check_output, CalledProcessError, DEVNULL
 try:
@@ -142,9 +142,7 @@ def str_find_all(str_input, match_val):
 
 def calc_pad(ref_len, non_pad_len):
     remainder = non_pad_len % ref_len
-    pad = ref_len - remainder if remainder else 0
-
-    return pad
+    return ref_len - remainder if remainder else 0
 
 def cart2pol(x, y):
     """
@@ -154,9 +152,7 @@ def cart2pol(x, y):
         -------
         >>> theta, radius = pol2cart(x, y)
     """
-    radius = np.hypot(x, y)
-    theta = np.arctan2(y, x)
-    return theta, radius
+    return np.arctan2(y, x), np.hypot(x, y)
 
 
 def compass(u, v, ax, arrowprops=None):
@@ -559,7 +555,7 @@ def comp_ber_curve(const_map, ebno_db=None):
     # Compute Union bound for BER determination.
     # for kk in range(np.size(self.sym_map)):
     kk = 0
-    for sub_idx, map_val in np.ndenumerate(const_map):
+    for sub_idx, _ in np.ndenumerate(const_map):
         i = sub_idx[0]
         j = sub_idx[1]
         # find neighbors
@@ -604,15 +600,14 @@ def comp_per_curve(self, const_map, pkt_length, ebno_db=None, fec_bits=0):
 
     """
     # pkt_length is in bits.
-    (ebno_db, snr, ber_curve) = self.comp_ber_curve(const_map, ebno_db)
+    ebno_db, snr, ber_curve = self.comp_ber_curve(const_map, ebno_db)
     per_curve = np.zeros(np.shape(ber_curve))
 
     k = pkt_length - fec_bits
     n = pkt_length
 
     first_term = comb(n, k, exact=1)
-    # first term represents the number of combinations that k correct bits
-    # can be drawn.
+    # first term represents the number of combinations that k correct bits can be drawn.
     for ii in range(len(per_curve)):
         # second term represents the probability that
         # n - m  (k) bits are correct for a given packet.
@@ -647,8 +642,6 @@ def gen_const_pts_list(bit_map, sym_map, EbNo_table=None, sig_gain=1):
     Nf = Es_avg
     # Pilot gain
     gain_lin = 10 ** (sig_gain / 10.)
-    noise_const = np.sqrt(gain_lin) * (np.sqrt(Nf))**-1
-    exp_noise_const = 2 * noise_var
 
     bit_depend = []
     const_pts_list0 = []
@@ -742,7 +735,6 @@ def comp_llr_values(syms_w_noise, bit_map, sym_map, EbNo_db = 3, sig_gain=1, pol
     Nf = Es_avg
     # Pilot gain
     gain_lin = 10 ** (sig_gain / 10.)
-    noise_const = np.sqrt(gain_lin) * (np.sqrt(Nf))**-1
     exp_noise_const = 2 * noise_var
 
     t1 = time.time()
@@ -784,14 +776,9 @@ def comp_llr_table(qvec, bit_map, sym_map, EbNo_sel = 3):
     (bit_depend, const_pts_list0, const_pts_list1) = gen_const_pts_list(bit_map, sym_map)
     llr_list = []
 
-    # EbNo_sel = 10**(EbNo_table / 10.)
     noise_var = (bits_per_sym * EbNo_sel)**-1
-    Es_avg = ret_es_avg(sym_map)
     # retrieve normalization factor.
-    Nf = Es_avg
     # Pilot gain
-    gain_lin = 10 ** (1. / 10.)
-    noise_const = np.sqrt(gain_lin) * (np.sqrt(Nf))**-1
     exp_noise_const = 2 * noise_var
 
     pos = fp_utils.comp_range_vec(qvec, signed=1)
@@ -799,7 +786,7 @@ def comp_llr_table(qvec, bit_map, sym_map, EbNo_sel = 3):
     pos_fi = fp_utils.Fi(pos, qvec=qvec)
     # for sym in syms_w_noise:
     
-    for (ii, depend_val) in enumerate(bit_depend):
+    for ii, _ in enumerate(bit_depend):
         P_1 = 0
         P_0 = 0
         for const_pt in const_pts_list1[ii]:
@@ -1183,7 +1170,6 @@ def convert_to_script(in_file_name, out_file_name):
     """
     fh = open(in_file_name, 'r')
     lines = fh.readlines()
-    # print(lines)
     fh.close()
     with open(out_file_name, "w") as fh:
         fh.write('#!/usr/bin/env python\n')
