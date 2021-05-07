@@ -102,7 +102,7 @@ def update_chan_obj(session_state):
 def remove_files(path):
     ip_files = os.listdir(path)
     for item in ip_files:
-        if item.endswith(".v") or item.endswith(".xci") or item.endswith(".sv") or item.endswith(".bin"):
+        if item.endswith(".v") or item.endswith(".xci") or item.endswith(".sv") or item.endswith(".bin") or item.endswith(".do"):
             os.remove(os.path.join(path, item))
 
 if chan_type == 'M/2':
@@ -216,7 +216,7 @@ if gen_button:
     print("===========================================================")
     gen_output_buffer(max_fft, IP_PATH)
     exp_tuple = gen_exp_shifter(chan_obj, AVG_LEN, path=IP_PATH)
-    inbuff_tuple = gen_input_buffer(max_fft, IP_PATH)
+    inbuff_tuple = gen_input_buffer(max_fft, IP_PATH, gen_2X)
     gen_circ_buffer(max_fft, IP_PATH)
     pfb_tuple = gen_pfb(chan_obj, path=IP_PATH, dsp48e2=dsp48e2)
     gen_mux(max_fft, IP_PATH)
@@ -230,7 +230,7 @@ if gen_button:
     offset_vec = [i * tstep  for i in range(len(tone_vec))]
     gen_tones_vec(tone_vec, M=max_fft, offset=offset_vec, path=IP_PATH)
 
-    chan_name, _ = gen_chan_top(IP_PATH, chan_obj, exp_tuple[0], pfb_tuple[0], fft_name)
+    chan_name, _ = gen_chan_top(IP_PATH, chan_obj, exp_tuple[0], pfb_tuple[0], fft_name, final_cnt_name)
     gen_chan_tb(IP_PATH, chan_obj, len(tones[0]))
     adv_filter.gen_sim_vh(IP_PATH)
 

@@ -3286,7 +3286,7 @@ def gen_pipe_mux(path, input_width, output_width, mux_bits=2, one_hot=False, one
         fh.write('\n')
         fh.write('endmodule\n')
 
-    return (file_name, tot_latency)
+    return file_name, module_name, tot_latency
 
 
 def gen_slicer(path, input_width=48, output_width=16, input_base=None, max_offset=31, rev_dir=False, prefix=''):

@@ -822,11 +822,11 @@ def gen_comb(path, cic_obj, prefix='', tuser_width=0, tlast=False):
     file_name = name_help(module_name, path)
 
     ram_style = 'distributed' if depth <= 32 else 'block'
-    (_, fifo_name) = gen_axi_fifo(path, tuser_width=tuser_width, tlast=tlast, almost_full=False, almost_empty=False,
+    _, fifo_name = gen_axi_fifo(path, tuser_width=tuser_width, tlast=tlast, almost_full=False, almost_empty=False,
                                   count=False, max_delay=depth, ram_style=ram_style, prefix='')
     print(fifo_name)
     funcs = 'C-CONCAT'
-    (_, dsp_name) = gen_dsp48E1(path, module_name, opcode=funcs, concatreg=2, creg=3, use_ce=False)
+    _, dsp_name = gen_dsp48E1(path, module_name, opcode=funcs, concatreg=2, creg=3, use_ce=False)
     print(dsp_name)
 
     assert(file_name is not None), 'User must specify File Name'
@@ -961,7 +961,7 @@ def gen_comb(path, cic_obj, prefix='', tuser_width=0, tlast=False):
         fh.write('endmodule\n')
         fh.close()
 
-    return (file_name, module_name)
+    return file_name, module_name, fifo_name
 
 
 def gen_cic_top(path, cic_obj, count_val=1024, qvec_correction=None, prefix='', slice_shift=0,
@@ -1047,7 +1047,7 @@ def gen_cic_top(path, cic_obj, count_val=1024, qvec_correction=None, prefix='', 
     addr_width = np.max((ret_num_bitsU(2 * total_delay), 1))
     fifo_depth = 1 << addr_width
     af_thresh = fifo_depth - total_delay - 5
-    _, comb_name = gen_comb(path, cic_obj, prefix=prefix, tuser_width=tuser_width, tlast=tlast)
+    _, comb_name, comb_fifo = gen_comb(path, cic_obj, prefix=prefix, tuser_width=tuser_width, tlast=tlast)
     print(comb_name)
     downsamp_name = None
     if cic_obj.r_max > 1:
@@ -1415,4 +1415,4 @@ def gen_cic_top(path, cic_obj, count_val=1024, qvec_correction=None, prefix='', 
         fh.write('endmodule\n')
 
 
-    return (file_name, module_name, slicer_name, fifo_name)
+    return file_name, module_name, slicer_name, fifo_name, comb_name, comb_fifo

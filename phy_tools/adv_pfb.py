@@ -1935,7 +1935,7 @@ def gen_down_select(path, name='downselect', num_channels=512, tuser_width=24):
     print(" pipelined mux")
     print("")
     input_width = num_channels
-    mux_out, pipe_latency = gen_pipe_mux(path, input_width, 1, mux_bits=3, one_hot=False, one_hot_out=False)
+    _, mux_out, pipe_latency = gen_pipe_mux(path, input_width, 1, mux_bits=3, one_hot=False, one_hot_out=False)
     print(mux_out)
     print("==========================")
     print("")

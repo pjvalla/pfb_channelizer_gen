@@ -1220,7 +1220,7 @@ def gen_exp_shifter(chan_obj, avg_len=16, path=IP_PATH):
     qvec_in = (fft_shift_bits, 0)
     qvec_out = (fft_shift_bits + frac_bits, frac_bits)
     cic_obj = fil_utils.CICDecFil(M=avg_len, N=1, qvec_in=qvec_in, qvec_out=qvec_out)
-    _, cic_name, slicer_name, cic_fifo = vfilter.gen_cic_top(path, cic_obj, count_val=0, prefix='', tuser_width=0)
+    _, cic_name, slicer_name, cic_fifo, comb_name, comb_fifo = vfilter.gen_cic_top(path, cic_obj, count_val=0, prefix='', tuser_width=0)
     # fil_msb = fft_shift_bits + table_bits - 1
     # fi_obj = fp_utils.ret_dec_fi([1.] * avg_len, qvec=(25, 0), overflow='wrap', signed=1)
 
@@ -1234,7 +1234,7 @@ def gen_exp_shifter(chan_obj, avg_len=16, path=IP_PATH):
     print(exp_out)
     print("================================")
     print("")
-    return exp_out, cic_name, cic_fifo, slicer_name, fifo_out
+    return exp_out, cic_name, cic_fifo, slicer_name, fifo_out, comb_name, comb_fifo
 
 def gen_tones(M=512, lidx=30, ridx=31, offset=0, path=SIM_PATH):
 
@@ -1565,7 +1565,7 @@ def plot_input_file(file_name):
     plot_psd_helper(comp_sig, title='Stimulus PSD', w_time=True, miny=-100, maxy=None, plot_on=False, savefig=True, fft_size=2048)
     print("Input stimulus plotted")
 
-def gen_logic(chan_obj, path=IP_PATH, avg_len=256, fs=6.4E6):
+def gen_logic(chan_obj, path=IP_PATH, avg_len=256, fs=6.4E6, gen_2X=False):
     """
         Helper function that generate RTL logic 
     """
@@ -1573,7 +1573,7 @@ def gen_logic(chan_obj, path=IP_PATH, avg_len=256, fs=6.4E6):
     sample_fi.gen_full_data()
     # gen_output_buffer(chan_obj.Mmax, path)  only used in synthesis bank.
     exp_name, cic_name = gen_exp_shifter(chan_obj, avg_len, path=path)
-    inbuff_name, inbuff_cnt_in, inbuff_cnt_out = gen_input_buffer(chan_obj.Mmax, path)
+    inbuff_name, inbuff_cnt_in, inbuff_cnt_out = gen_input_buffer(chan_obj.Mmax, path, )
     circbuff_name = gen_circ_buffer(chan_obj.Mmax, path)
     pfb_name = gen_pfb(chan_obj, path, fs=fs)
     gen_downselect(chan_obj.Mmax, path)
@@ -1643,7 +1643,7 @@ def get_args():
         # gen_output_buffer(Mmax)
         exp_tuple = gen_exp_shifter(chan_obj, avg_len) #, sample_fi=sample_fi)
         # exp_name, cic_name, cic_fifo, slicer_name, exp_fifo
-        inbuff_tuple = gen_input_buffer(Mmax, gen_2X=gen_2X)
+        inbuff_tuple = gen_input_buffer(Mmax, IP_PATH, gen_2X=gen_2X)
         # inbuff_name, inbuff_cnt_in, inbuff_cnt_out, in_fifo, out_fifo = inbuff_tuple
         gen_circ_buffer(Mmax)
         pfb_tuple = gen_pfb(chan_obj)
@@ -1651,7 +1651,7 @@ def get_args():
         gen_mux(Mmax)
         final_cnt_name = gen_final_cnt()
         fft_name = f'xfft_{Mmax}'
-        chan_name, _ = gen_chan_top(IP_PATH, chan_obj, exp_tuple[0], pfb_tuple[0], fft_name)
+        chan_name, _ = gen_chan_top(IP_PATH, chan_obj, exp_tuple[0], pfb_tuple[0], fft_name, final_cnt_name)
         if chan_obj.gen_2X:
             copyfile('./verilog/circ_buffer.v', IP_PATH + '/circ_buffer.v')
             copyfile('./verilog/input_buffer.v', IP_PATH + '/input_buffer.v')
