@@ -1202,7 +1202,7 @@ def gen_final_cnt(path=IP_PATH):
     print("======================")
     print("Final Count")
     print("")
-    final_cnt = vgen.gen_aligned_cnt(path, cnt_width=16, tuser_width=24, tlast=True)
+    final_cnt, _ = vgen.gen_aligned_cnt(path, cnt_width=16, tuser_width=24, tlast=True)
     print(final_cnt)
     print("======================")
     print("")
@@ -1225,12 +1225,12 @@ def gen_exp_shifter(chan_obj, avg_len=16, path=IP_PATH):
     # fi_obj = fp_utils.ret_dec_fi([1.] * avg_len, qvec=(25, 0), overflow='wrap', signed=1)
 
     # generate fifo
-    fifo_out = vgen.gen_axi_fifo(path, tuser_width=24, tlast=True, almost_full=True, ram_style='distributed')    
+    _, fifo_out = vgen.gen_axi_fifo(path, tuser_width=24, tlast=True, almost_full=True, ram_style='distributed')    
     print(fifo_out)
     print("================================")
     print("")
 
-    exp_out = adv_filter.gen_exp_shift_rtl(path, chan_obj, cic_obj)
+    _, exp_out = adv_filter.gen_exp_shift_rtl(path, chan_obj, cic_obj)
     print(exp_out)
     print("================================")
     print("")

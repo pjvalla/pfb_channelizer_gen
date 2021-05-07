@@ -10,6 +10,7 @@ from phy_tools.fp_utils import ret_num_bitsU, dec_to_ubin
 from phy_tools.verilog_gen import name_help
 import os
 import numpy as np
+import ipdb
 
 
 def gen_chan_name(chan_obj):
@@ -38,7 +39,7 @@ def gen_do_file(path, Mmax, gen_2X, chan_name, exp_tuple, inbuff_tuple, pfb_tupl
     pfb_name, _, _, pfb_fifo = pfb_tuple
     select_name, mux_name = down_tuple
     mod_name = chan_name + '_sim.do'
-    file_name = name_help(mod_name, path)
+    file_name = path + mod_name
     with open(file_name, 'w') as fh:
         fh.write('###############################################################################\n')
         fh.write('#\n')

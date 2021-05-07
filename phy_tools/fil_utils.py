@@ -560,7 +560,6 @@ def max_filter_output(taps, qvec_coef, P=1, input_width=16, output_width=16, cor
         in_use = (s_gain / max_coef_val) * 100.
     
     # only change the coefficients if less than 90# of the range is in use.
-
     scale_fac = comp_max_value((qvec_coef[0], qvec_coef[0] - 1), True)
     new_b = copy.deepcopy(taps)
     # note we are scaling down here hence the - 1

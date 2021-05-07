@@ -2389,7 +2389,7 @@ def gen_exp_shift_rtl(path, chan_obj, cic_obj):
         fh.write('\n')
         fh.write('endmodule\n')
 
-    return file_name
+    return file_name, mod_name
 
 
 def gen_sim_vh(path):
