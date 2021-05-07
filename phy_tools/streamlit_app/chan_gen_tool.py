@@ -60,8 +60,8 @@ taps_per_phase = st.sidebar.number_input("Taps Per Arm of PFB", value=16, min_va
 chan_type = st.sidebar.radio("Channelizer Type", ('M', 'M/2'))
 dsp_type = st.sidebar.radio("DSP Type", ('DSP48E1', 'DSP48E2'))
 min_db = st.sidebar.selectbox("Plot Min DB", db_list, index=3)
-fc_scale = st.sidebar.number_input("Cut off Frequency (Proportional to Bin Width)", value=.8, min_value=0.5, max_value=1.0)
-tbw_scale = st.sidebar.number_input("Transition Bandwidth (Proportional to Bin Width) - M/2 Designs should relax specs", value=.30, min_value=0.10, max_value=1.0)
+fc_scale = st.sidebar.number_input("Cut off Frequency (Proportional to Bin Width)", value=.75, min_value=0.5, max_value=1.0)
+tbw_scale = st.sidebar.number_input("Transition Bandwidth (Proportional to Bin Width) - M/2 Designs should relax specs", value=.20, min_value=0.09, max_value=1.0)
 
 K_orig = OrderedDict([(8, 9.169244999999984), (16, 9.169244999999984), (32, 9.169244999999984),
                       (64, 9.169244999999984), (128, 9.169244999999984), (256, 9.169244999999984), (512, 9.169244999999984),
