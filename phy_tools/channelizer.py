@@ -1148,7 +1148,7 @@ def gen_mux(Mmax=512, path=IP_PATH):
     print("")
     return mux_out
 
-def gen_pfb(chan_obj, path=IP_PATH, fs=6.4E6, dsp48e2=False):  # Mmax=512, pfb_msb=40, M=512, taps=None, gen_2X=GEN_2X):
+def gen_pfb(chan_obj, path=IP_PATH, fs=6.4E6, dsp48e2=False, fc_scale=FC_SCALE):  # Mmax=512, pfb_msb=40, M=512, taps=None, gen_2X=GEN_2X):
     """
         Generates the logic for the Polyphase Filter bank
     """
@@ -1159,7 +1159,7 @@ def gen_pfb(chan_obj, path=IP_PATH, fs=6.4E6, dsp48e2=False):  # Mmax=512, pfb_m
     print("")
 
     print("K terms = {}".format(chan_obj.K))
-    print("fc_scale = {}".format(FC_SCALE))
+    print("fc_scale = {}".format(fc_scale))
     pfb_fil = chan_obj.poly_fil_fi
     pfb_reshape = pfb_fil.T.flatten()
     qvec_coef = ret_qcoef(dsp48e2) 
@@ -1695,13 +1695,15 @@ def get_args():
         print(f"gen_2x = {gen_2X}")
         print(K_default)
         K_terms = OrderedDict([(8, 7.558734999999983), (16, 7.558734999999983), (128, 7.558734999999983)])
+        K_terms = OrderedDict([(8, 7.558734999999983), (16, 15.838734999999983), (128, 15.830899999999993)])
         msb_terms = OrderedDict([(128, 39)])
-        offset_terms = OrderedDict([(8, 0.5), (16, 0.5), (128, 0.5)])
+        offset_terms = OrderedDict([(8, 0.5), (16, 0.5), (128, 0.498)])
+        fc_scale = .75
 
         qvec_coef = ret_qcoef(dsp48e2)
 
         chan = Channelizer(M=M, gen_2X=gen_2X, qvec=QVEC, qvec_coef=qvec_coef, K_terms=K_terms,
-                           offset_terms=offset_terms, desired_msb=39)
+                           offset_terms=offset_terms, desired_msb=39, fc_scale=fc_scale)
         vec = read_complex_samples(args.process_input, q_first=False) * (2 ** -15)
         # vec = np.fromfile(args.process_input, dtype=np.complex64)
         chan_out = chan.analysis_bank(vec, plot_out=False)
@@ -1745,7 +1747,7 @@ def get_args():
         marker_idx = 0
         style_list = ['solid', 'dash', 'dashdot']
         style_idx = 0
-        msize = 5
+        msize = 4
         for idx in range(M):
             if idx not in chan_list:
                 continue

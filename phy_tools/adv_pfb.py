@@ -358,11 +358,11 @@ def gen_pfb(path, Mmax, rom_fi, input_width=16, output_width=16, taps_per_phase=
                 fh.write('    wr_addr_d[{}] <= {{~rd_addr_d[{}][{}], rd_addr_d[{}][{}], rd_addr_d[{}][{}:0]}};\n'.format(*t_val))
         else:
             t_val = (mem_msb, phase_msb)
-            fh.write('    wr_addr_d[0] <= rd_addr;\n')
-            fh.write('    wr_addr_d[3] <= rd_addr;\n')
+            fh.write('    wr_addr_d[0] <= wr_addr;\n')
+            fh.write('    wr_addr_d[3] <= {{~rd_addr[{}], rd_addr[{}:0]}};\n'.format(mem_msb, mem_msb-1))
             for i in range(taps_per_phase - 2):
                 idx = i * 3 + 6
-                fh.write('    wr_addr_d[{}] <= rd_addr_d[{}];\n'.format(idx, i))
+                fh.write('    wr_addr_d[{}] <= {{~rd_addr_d[{}][{}], rd_addr_d[{}][{}:0]}};\n'.format(idx, i, mem_msb, i, mem_msb-1))
         fh.write('\n')
         for i in range(taps_per_phase):
             for j in range(1, 3):
