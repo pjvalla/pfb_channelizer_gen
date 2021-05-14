@@ -616,9 +616,9 @@ def bin_to_udec(bin_vec):
     """
         Converts binary to unsigned decimal value.
     """
-    func = lambda x: int(x, 2)
-    vfunc = np.vectorize(func)
+    vfunc = np.vectorize(lambda x: int(x, 2))
     return vfunc(bin_vec)
+
 
 def udec_to_sdec(uval, num_bits):
     """
@@ -629,6 +629,13 @@ def udec_to_sdec(uval, num_bits):
         return uval | ~mask
     else:
         return uval & mask
+
+def bin_to_sdec(bin_vec, num_bits):
+    """
+        Converts binary to signed decimal value.
+    """
+    vfunc = np.vectorize(lambda x: int(x, 2))
+    return [udec_to_sdec(value, num_bits) for value in vfunc(bin_vec)]
 
 def nextpow2(i):
     """
@@ -667,19 +674,14 @@ def ret_num_bitsS(value):
     return temp
 
 
-def bin_to_bool(string):
+def bin_to_bool(string : str) -> np.ndarray:
     """
         Helper function converts a binary string into a boolean array
     """
-    # return map(lambda x: x**2, range(10)
-    bool_array = np.zeros((len(string),), dtype=np.bool)
-    for (ii, val) in enumerate(string):
-        bool_array[ii] = True if (val == '1') else False
-
-    return bool_array
+    return np.array([True if value == '1' else False for value in string])
 
 
-def init_str_array(num_chars, array_shape, compType=False):
+def init_str_array(num_chars, array_shape):
     """
         Initializes a string array.
     """

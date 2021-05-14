@@ -174,9 +174,9 @@ def gen_taps(session_state):
         taps = np.pad(chan_obj.taps, (0, pad), mode='constant', constant_values=0.)
         fixed_taps = np.pad(chan_obj.taps_fi.flatten(), (0, pad), mode='constant', constant_values=0)
         hex_taps = dec_to_hex(fixed_taps, 8)  # 32 bit values
-        poly_taps = np.reshape(taps, (max_fft, -1), order='C').T.flatten()
-        fixed_poly_taps = np.reshape(fixed_taps, (max_fft, -1), order='C').T.flatten()
-        hex_poly_taps = np.reshape(hex_taps, (max_fft, -1), order='C').T.flatten()
+        poly_taps = np.reshape(taps, (max_fft, -1), order='F').T.flatten()
+        fixed_poly_taps = np.reshape(fixed_taps, (max_fft, -1), order='F').T.flatten()
+        hex_poly_taps = np.reshape(hex_taps, (max_fft, -1), order='F').T.flatten()
         data = {'FFT Size':fft_size, 'Float Taps':taps, 'Fixed Taps':fixed_taps, 'Hex Taps':hex_taps,
                 'Float Taps Reshaped':poly_taps, 'Fixed Taps Reshaped': fixed_poly_taps, 'Hex Taps Reshaped':hex_poly_taps}
 
@@ -185,11 +185,8 @@ def gen_taps(session_state):
         ret_df = ret_df.append(temp_df)
         if fft_size == max_fft:
             break
-        # ret_df = ret_df.append
     file_name = 'taps'
-    full_name = IP_PATH + file_name + '.p'
     full_name = file_name + '.p'
-    path = IP_PATH
     ret_df.to_pickle(full_name)
     st.sidebar.markdown(get_download_link(full_name, path=None, file_type='pickle'), unsafe_allow_html=True)
 
