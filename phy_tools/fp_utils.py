@@ -619,7 +619,6 @@ def bin_to_udec(bin_vec):
     vfunc = np.vectorize(lambda x: int(x, 2))
     return vfunc(bin_vec)
 
-
 def udec_to_sdec(uval, num_bits):
     """
         Converts unsigned decimal to signed decimal

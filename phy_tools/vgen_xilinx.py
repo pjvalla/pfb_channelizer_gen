@@ -418,6 +418,7 @@ def gen_dsp48E1(path, name, opcode='A*B', a_width=25, b_width=18, c_width=48, d_
                 use_acout=False, use_bcout=False, use_pcout=False, use_ce=False, use_reset=False, rnd=False,
                 p_msb=None, p_lsb=None, a_signed=True, b_signed=True):
 
+    from phy_tools.verilog_gen import add_apache_license
     def input_port(fh):
         # op_strs = re.findall(r"[\w']+", opcode)
         # for str_val in op_strs
@@ -720,7 +721,7 @@ def gen_dsp48E1(path, name, opcode='A*B', a_width=25, b_width=18, c_width=48, d_
         mreg = 0
 
     with open(file_name, "w") as fh:
-
+        add_apache_license(fh)
         fh.write('module {}\n'.format(module_name))
         fh.write('(\n')
         if use_reset:

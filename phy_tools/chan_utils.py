@@ -7,7 +7,7 @@ Created on Tue May 4 12:28:03 2021
 """
 from phy_tools.gen_utils import ret_module_name, ret_valid_path
 from phy_tools.fp_utils import ret_num_bitsU, dec_to_ubin
-from phy_tools.verilog_gen import name_help
+from phy_tools.verilog_gen import name_help, add_apache_license
 import os
 import numpy as np
 import ipdb
@@ -47,6 +47,7 @@ def gen_do_file(path, Mmax, gen_2X, chan_name, exp_tuple, inbuff_tuple, pfb_tupl
     fifos = np.unique([cic_fifo, pfb_fifo, exp_fifo, comb_fifo, inbuff_in_fifo, inbuff_out_fifo]).tolist()
     cnt_blocks = np.unique([inbuff_in_cnt, inbuff_out_cnt, final_cnt_name]).tolist()
     with open(file_name, 'w') as fh:
+        add_apache_license(fh, cstr='#')
         fh.write('###############################################################################\n')
         fh.write('#\n')
         fh.write('# Workspace and design setup.\n')
@@ -213,7 +214,7 @@ def gen_chan_tb(path, chan_obj, mask_len):
 
     file_name = name_help(mod_name, path)
     with open(file_name, 'w') as fh:
-
+        add_apache_license(fh)
         fh.write('// Top level testbench\n')
         fh.write('\n')
         fh.write('`timescale 1ns/1ps\n')
@@ -435,7 +436,7 @@ def gen_chan_top(path, chan_obj, shift_name, pfb_name, fft_name, final_cnt_name)
     tuser_bits = calc_fft_tuser_width(Mmax)
 
     with open(file_name, 'w') as fh:
-
+        add_apache_license(fh)
         fh.write('//***************************************************************************--\n')
         fh.write('//\n')
         fh.write('// Author : PJV\n')

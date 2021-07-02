@@ -9,7 +9,7 @@ Created on Wed Sept 25 7:09:28 2019
 import numpy as np
 from phy_tools.gen_utils import ret_module_name, ret_valid_path
 from phy_tools.vgen_xilinx import gen_dsp48E1, gen_dsp48E2
-from phy_tools.verilog_gen import gen_ram, gen_axi_fifo, name_help, gen_rom, axi_fifo_inst
+from phy_tools.verilog_gen import add_apache_license, gen_ram, gen_axi_fifo, name_help, gen_rom, axi_fifo_inst
 from phy_tools.verilog_gen import gen_pipe_mux
 from phy_tools import fp_utils
 from phy_tools.fp_utils import ret_num_bitsU, bin_to_udec
@@ -208,6 +208,7 @@ def gen_pfb(path, Mmax, rom_fi, input_width=16, output_width=16, taps_per_phase=
 
     with open(file_name, "w") as fh:
         m_text = 'M/2' if gen_2X else 'M'
+        add_apache_license(fh)
         fh.write('/*****************************************************************************/\n')
         fh.write('// Implements the {} PFB architecture referenced in the\n'.format(m_text))
         fh.write('// "A Versatile Multichannel Filter Bank with Multiple Channel Bandwidths" paper.\n')
@@ -760,6 +761,7 @@ def gen_interp_pfb(path, Mmax, rom_fi, input_width=16, output_width=16, taps_per
 
     with open(file_name, "w") as fh:
 
+        add_apache_license(fh)
         fh.write('/*****************************************************************************/\n')
         fh.write('// Implements the Direct Form 2 PFB architecture for an interpolating filter bank\n')
         fh.write('/*****************************************************************************/\n')
@@ -1147,6 +1149,7 @@ def gen_multich_pfb(path, Mmax, rom_fi, input_width=16, output_width=16, taps_pe
 
     with open(file_name, "w") as fh:
         m_text = 'M/2' if gen_2X else 'M'
+        add_apache_license(fh)
         fh.write('/*****************************************************************************/\n')
         fh.write('// Implements the {} PFB architecture referenced in the\n'.format(m_text))
         fh.write('// "A Versatile Multichannel Filter Bank with Multiple Channel Bandwidths" paper.\n')
@@ -1739,7 +1742,7 @@ def gen_mem_ctrl(path, name, rom_fi, num_taps=32):
     roll_over = rom_fi_new.len - 2
     case_len = 1 << top_bits
     with open(file_name, 'w') as fh:
-
+        add_apache_license(fh)
         fh.write('//***************************************************************************--\n')
         fh.write('//\n')
         fh.write('// Author : PJV\n')
@@ -1941,7 +1944,7 @@ def gen_down_select(path, name='downselect', num_channels=512, tuser_width=24):
     print("")
 
     with open(file_name, 'w') as fh:
-
+        add_apache_license(fh)
         fh.write('//***************************************************************************--\n')
         fh.write('//\n')
         fh.write('// Author : PJV\n')
@@ -2170,7 +2173,7 @@ def gen_exp_shift_rtl(path, chan_obj, cic_obj):
     file_name = name_help(mod_name, path)
 
     with open(file_name, 'w') as fh:
-
+        add_apache_license(fh)
         fh.write('//*****************************************************************************\n')
         fh.write('//\n')
         fh.write('// Since the fft is block floating point the apparent signal amplitude can be shifted\n')
@@ -2404,6 +2407,7 @@ def gen_sim_vh(path):
     file_name = path + mod_name
 
     with open(file_name, 'w') as fh:
+        add_apache_license(fh)
         fh.write('//\n')
         fh.write('// Macros used only in Simulation\n')
         fh.write('//\n')

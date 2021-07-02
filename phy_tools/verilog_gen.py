@@ -16,6 +16,7 @@ from phy_tools import fp_utils
 from phy_tools.fp_utils import ret_num_bitsU
 from phy_tools.gen_utils import ret_module_name, ret_file_name, ret_valid_path, print_header
 from phy_tools.vgen_xilinx import gen_dsp48E1
+from typing import TextIO
 
 # from dsp_opts import opcode_opts
 import numpy as np  #analysis:ignore
@@ -30,11 +31,34 @@ except CalledProcessError:
     __version__ = today.strftime("%Y.%m.%d")
 
 
-def adder_pipeline(cnt_width):
+def add_apache_license(fh: TextIO, cstr: str = '//'):
+    fh.write('\n')
+    fh.write(f'{cstr}     Licensed to the Apache Software Foundation (ASF) under one\n')
+    fh.write(f'{cstr} or more contributor license agreements.  See the NOTICE file\n')
+    fh.write(f'{cstr} distributed with this work for additional information\n')
+    fh.write(f'{cstr} regarding copyright ownership.  The ASF licenses this file\n')
+    fh.write(f'{cstr} to you under the Apache License, Version 2.0 (the\n')
+    fh.write(f'{cstr} "License"); you may not use this file except in compliance\n')
+    fh.write(f'{cstr} with the License.  You may obtain a copy of the License at\n')
+    fh.write(f'{cstr} \n')
+    fh.write(f'{cstr}   http://www.apache.org/licenses/LICENSE-2.0\n')
+    fh.write(f'{cstr} \n')
+    fh.write(f'{cstr} Unless required by applicable law or agreed to in writing,\n')
+    fh.write(f'{cstr} software distributed under the License is distributed on an\n')
+    fh.write(f'{cstr} "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY\n')
+    fh.write(f'{cstr} KIND, either express or implied.  See the License for the\n')
+    fh.write(f'{cstr} specific language governing permissions and limitations\n')
+    fh.write(f'{cstr} under the License.  \n')
+    fh.write('\n')
+
+    return fh
+
+
+def adder_pipeline(cnt_width: int):
     return int(np.ceil((cnt_width - 1) / 8.))
 
 
-def name_help(mod_name, path=None):
+def name_help(mod_name: str, path=None):
     if path is not None:
         file_name = path + mod_name + '.v'
     else:
@@ -42,7 +66,7 @@ def name_help(mod_name, path=None):
 
     return file_name
 
-def ret_addr_width(depth):
+def ret_addr_width(depth: int):
     fifo_depth = 2 ** int(np.ceil(np.log2(depth)))
     if fifo_depth < 8:
         fifo_depth = 8
@@ -51,18 +75,18 @@ def ret_addr_width(depth):
     return fifo_addr_width
 
 
-def logic_rst(fh, prefix='a_d', cnt=1, sp=''):
+def logic_rst(fh: TextIO, prefix: str = 'a_d', cnt: int = 1, sp=''):
     for jj in range(cnt):
         fh.write('{}{}[{}] <= 0;\n'.format(sp, prefix, jj))
 
 
-def logic_gate(fh, prefix='a_d', str_val='a', cnt=1, sp=''):
+def logic_gate(fh: TextIO, prefix: str = 'a_d', str_val: str = 'a', cnt: int = 1, sp: str = ''):
     for jj in range(cnt):
         rside = str_val if (jj == 0) else '{}[{}]'.format(prefix, jj - 1)
         fh.write('{}{}[{}] <= {};\n'.format(sp, prefix, jj, rside))
 
 
-def gen_cnt_sigs(fh, prefix='cnt', pdelay=2):
+def gen_cnt_sigs(fh: TextIO, prefix: str = 'cnt', pdelay: int = 2):
     for jj in range(pdelay):
         fh.write('reg [8:0] {}_nib{}, next_{}_nib{};\n'.format(prefix, jj, prefix, jj))
 
@@ -73,19 +97,19 @@ def gen_cnt_sigs(fh, prefix='cnt', pdelay=2):
             fh.write('reg [7:0] {}_nib{}_d{};\n'.format(prefix, jj, nn))
         fh.write('\n')
 
-def gen_cnt_rst(fh, prefix='cnt', pdelay=2, sp='', reset_list=None):
+def gen_cnt_rst(fh: TextIO, prefix: str = 'cnt', pdelay: int = 2, sp: str = '', reset_list=None):
     for jj in range(pdelay):
         if reset_list is None:
             fh.write('{}{}_nib{} <= 0;\n'.format(sp, prefix, jj))
         else:
             fh.write('{}{}_nib{} <= {};\n'.format(sp, prefix, jj, reset_list[jj]))
 
-def gen_cnt_regs(fh, prefix='cnt', pdelay=2):
+def gen_cnt_regs(fh: TextIO, prefix: str = 'cnt', pdelay: int = 2):
     for jj in range(pdelay):
         fh.write('        {}_nib{} <= next_{}_nib{};\n'.format(prefix, jj, prefix, jj))
 
 
-def gen_cnt_delay(fh, prefix='cnt', pdelay=2, tab=''):
+def gen_cnt_delay(fh: TextIO, prefix: str = 'cnt', pdelay: int = 2, tab: str = ''):
     for jj in range(pdelay - 1):
         for nn in range(pdelay - jj - 1):
             if nn == 0:
@@ -95,7 +119,7 @@ def gen_cnt_delay(fh, prefix='cnt', pdelay=2, tab=''):
         fh.write('\n')
 
 
-def gen_cnt_fback(fh, prefix='cnt', pdelay=2):
+def gen_cnt_fback(fh: TextIO, prefix: str = 'cnt', pdelay: int = 2):
     for jj in range(pdelay):
             fh.write('    next_{}_nib{} = {}_nib{};\n'.format(prefix, jj, prefix, jj))
 
@@ -179,7 +203,7 @@ def axi_fifo_inst(fh, fifo_name, data_width, addr_width, af_thresh=None, ae_thre
     fh.write('    .m_axis_tready({})\n'.format(m_tready_str))
     fh.write(');\n')
 
-def ret_mult_eight(input_val):
+def ret_mult_eight(input_val: int):
     return int(np.ceil(input_val / 8.)) * 8
 
 def gen_cordic(path, qvec_in=(16, 15), output_width=16, num_iters=6, function='vector', prefix='', tuser_width=0, tlast=False):
@@ -197,6 +221,7 @@ def gen_cordic(path, qvec_in=(16, 15), output_width=16, num_iters=6, function='v
             prefix : Naming prefix.
 
     """
+    
     assert(path is not None), 'User must specify Path'
     path = ret_valid_path(path)
     input_width = qvec_in[0]
@@ -220,7 +245,7 @@ def gen_cordic(path, qvec_in=(16, 15), output_width=16, num_iters=6, function='v
     print(dsp_name)
 
     with open(file_name, "w") as fh:
-
+        add_apache_license(fh)
         fh.write('/*****************************************************************************/\n')
         fh.write('//\n')
         fh.write('// Author      : PJV\n')
@@ -495,7 +520,7 @@ def gen_mod_logic(path, mod_value=3):
     num_shifts = 8 - ret_num_bitsU(mod_value)
     num_subs = num_shifts + 1
     with open(file_name, "w") as fh:
-
+        add_apache_license(fh)
         fh.write('/*****************************************************************************/\n')
         fh.write('//\n')
         fh.write('// Author      : PJV\n')
@@ -660,6 +685,7 @@ def gen_complex_mult(path, input_width=16, b_width=25, tuser_width=0, tlast=Fals
         almost_full_thresh = 1 << (fifo_addr_width - 1)
 #    tot_latency = 6
     with open(file_name, "w") as fh:
+        add_apache_license(fh)
         fh.write('/*****************************************************************************/\n')
         fh.write('//\n')
         fh.write('// Author : PJV\n')
@@ -951,6 +977,7 @@ def gen_aligned_cnt(path, cnt_width=16, tuser_width=0, tlast=False, incr=1, tot_
     pad_bits = (pdelay * 8 - cnt_width)
     int_cnt_msb = cnt_msb + pad_bits
     with open(file_name, "w") as fh:
+        add_apache_license(fh)
         fh.write('/*****************************************************************************/\n')
         fh.write('//\n')
         fh.write('// Author : PJV\n')
@@ -1498,6 +1525,7 @@ def gen_var_delay(path, cnt_width=16, tuser_width=0, tlast=False, prefix='', mem
     ccycle_name, _ = gen_aligned_cnt(path, cnt_width=16, tuser_width=tuser_width, tlast=tlast, startup=True)
     cnt_msb = cnt_width - 1
     with open(file_name, "w") as fh:
+        add_apache_license(fh)
         fh.write('/*****************************************************************************/\n')
         fh.write('//\n')
         fh.write('// Author : PJV\n')
@@ -1734,7 +1762,7 @@ def gen_axi_accum(path, a_width=16, cnt_width=16, tuser_width=0, tlast=False, si
     (_, fifo_name) = gen_axi_fifo(path, tuser_width=tuser_width, almost_full=pdelay, ram_style='distributed', tlast=tlast)
 
     with open(file_name, "w") as fh:
-
+        add_apache_license(fh)
         fh.write('/*****************************************************************************/\n')
         fh.write('//\n')
         fh.write('// Author      : PJV\n')
@@ -2229,8 +2257,7 @@ def gen_axi_adder(path=None, a_width=16, b_width=16, subtract=False, word_width=
     module_name = ret_module_name(file_name)
     extra_bits = tuser_width + tlast
     with open(file_name, "w") as fh:
-
-        fh.write('/*\n')
+        add_apache_license(fh)
         fh.write('\n')
         fh.write('/*****************************************************************************/\n')
         fh.write('//\n')
@@ -2515,6 +2542,7 @@ def gen_adder(path=None, a_width=16, b_width=16, subtract=False, signeda=False,
 
     mod_name = ret_module_name(file_name)
     with open(file_name, "w") as fh:
+        add_apache_license(fh)
         fh.write('/*****************************************************************************/\n')
         fh.write('//')
         fh.write('// Author      : Python Generated\n')
@@ -2741,6 +2769,7 @@ def gen_pipe_logic(path, input_width, l_func='xor', file_path=None):
     if (l_func.lower() == 'xor'):
         logic_str = '^'
     with open(file_name, "w") as fh:
+        add_apache_license(fh)
         fh.write('/*****************************************************************************/\n')
         fh.write('//')
         fh.write('// Author      : Python Generated\n')
@@ -2969,6 +2998,7 @@ def gen_one_hot(input_width, file_path=None):
     out_msb = output_width - 1
 
     with open(file_name, 'w') as fh:
+        add_apache_license(fh)
         fh.write('/*******************************************************/\n')
         fh.write('//')
         fh.write('// File        : {}\n'.format(mod_name))
@@ -3113,7 +3143,7 @@ def gen_pipe_mux(path, input_width, output_width, mux_bits=2, one_hot=False, one
     sel_strs.append(['sel_d{}'.format(len(num_mux_per_stage))])
 
     with open(file_name, 'w') as fh:
-
+        add_apache_license(fh)
         fh.write('/*************************************************************************/\n')
         fh.write('//')
         fh.write('// File        : {}.v\n'.format(module_name))
@@ -3339,6 +3369,7 @@ def gen_slicer(path, input_width=48, output_width=16, input_base=None, max_offse
     ctrl_str = str(ctrl_bits - 1)
 
     with open(file_name, 'w') as fh:
+        add_apache_license(fh)
         fh.write('\n')
         fh.write('/*****************************************************************************/\n')
         fh.write('//\n')
@@ -3458,6 +3489,7 @@ def gen_exp_conv(file_name, project_file, combined_table, corr_fac_fi, input_wid
     shift_msb = shift_bits - 1
 
     with open(file_name, 'w') as fh:
+        add_apache_license(fh)
         fh.write('\n')
         fh.write('/*****************************************************************************/\n')
         fh.write('//\n')
@@ -3721,6 +3753,7 @@ def gen_log_conv(path, combined_table, altera=False, tuser_width=0, tlast=False,
                                     p_msb=interp_width - 1, p_lsb=0)
 
     with open(file_name, 'w') as fh:
+        add_apache_license(fh)
         fh.write('\n')
         fh.write('/*****************************************************************************/\n')
         fh.write('//\n')
@@ -4005,6 +4038,7 @@ def gen_axi_fifo(path, tuser_width=0, tlast=False, almost_full=False, almost_emp
     out_cnt = count or (almost_full) or (almost_empty)
     module_name = ret_module_name(file_name)
     with open(file_name, "w") as fh:
+        add_apache_license(fh)
         fh.write('/*****************************************************************************/\n')
         fh.write('//\n')
         fh.write('// Author      : PJV\n')
@@ -4317,6 +4351,7 @@ def gen_rom(path, fi_obj, rom_type='sp', rom_style='block', prefix='', write_acc
     file_name = os.path.join(path, file_name)
     module_name = ret_module_name(file_name)
     with open(file_name, 'w') as fh:
+        add_apache_license(fh)
         fh.write('\n')
         fh.write('/*****************************************************************************/\n')
         fh.write('//\n')
@@ -4508,6 +4543,7 @@ def gen_ram(path, ram_type='sp', memory_type='write_first', ram_style='block', r
     file_name = os.path.join(path, file_name)
     module_name = ret_module_name(file_name)
     with open(file_name, 'w') as fh:
+        add_apache_license(fh)
         fh.write('\n')
         fh.write('/*****************************************************************************/\n')
         fh.write('//\n')
@@ -4658,7 +4694,7 @@ def gen_axi_downsample(path, tlast=False, tuser_width=0):
 
     tuser_msb = tuser_width - 1
     with open(file_name, 'w') as fh:
-
+        add_apache_license(fh)
         fh.write('\n')
         fh.write('/*****************************************************************************/\n')
         fh.write('//\n')
@@ -4799,6 +4835,7 @@ def gen_shifter(path, input_width, shift_bits, gain_width, output_width=None, pr
     gain_msb = gain_width - 1
 
     with open(file_name, 'w') as fh:
+        add_apache_license(fh)
         fh.write('\n')
         fh.write('/*****************************************************************************/\n')
         fh.write('//\n')

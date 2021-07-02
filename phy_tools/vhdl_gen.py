@@ -997,7 +997,6 @@ def gen_adder(path=None, a_width=16, b_width=16, subtract=False, signeda=False, 
         print_header(fh)
         fh.write('--\n')
         fh.write('--***************************************************************************--\n')
-
         fh.write('\n')
         print_libraries(fh)
         fh.write('\n')
@@ -3441,7 +3440,6 @@ def gen_count_cycle(input_width, count_width, latency=2, add_latency=1,
         fh.write('--\n')
         fh.write('--**************************************************************************--\n')
         fh.write('\n')
-
         fh.write('library ieee;\n')
         fh.write('use ieee.std_logic_1164.all;\n')
         fh.write('use ieee.numeric_std.all;\n')

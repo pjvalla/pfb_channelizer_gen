@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 from phy_tools.gen_utils import ret_valid_path
+from phy_tools.verilog_gen import add_apache_license
 import os
 
 def gen_circbuff_logic(path):
@@ -9,7 +10,7 @@ def gen_circbuff_logic(path):
     mod_name = 'circ_buffer.v'
     file_name = os.path.join(path, mod_name)
     with open(file_name, 'w') as fh:
-
+        add_apache_license(fh)
         fh.write('//***************************************************************************--\n')
         fh.write('//\n')
         fh.write('// Author : PJV\n')
@@ -345,6 +346,7 @@ def gen_inbuff_logic(path):
     mod_name = 'input_buffer.v'
     file_name = os.path.join(path, mod_name)
     with open(file_name, 'w') as fh:
+        add_apache_license(fh)
         fh.write('//***************************************************************************--\n')
         fh.write('//\n')
         fh.write('// Author : PJV\n')
@@ -719,6 +721,7 @@ def gen_inbuff1x_logic(path):
     mod_name = 'input_buffer_1x.v'
     file_name = os.path.join(path, mod_name)
     with open(file_name, 'w') as fh:
+        add_apache_license(fh)
         fh.write('//***************************************************************************--\n')
         fh.write('//\n')
         fh.write('// Author : PJV\n')
@@ -1072,11 +1075,11 @@ def gen_reader(path):
     mod_name = 'grc_word_reader.sv'
     file_name = os.path.join(path, mod_name)
     with open(file_name, 'w') as fh:
-
+        add_apache_license(fh)
         fh.write('/*****************************************************************************/\n')
         fh.write('//\n')
         fh.write('// Author      : Phil Vallance\n')
-        fh.write('// File        : grc_word_reader.v\n')
+        fh.write('// File        : grc_word_reader.sv\n')
         fh.write('// Description : Test bench utility that reads in a binary file and parses out\n')
         fh.write('//               real and complex signal components.\n')
         fh.write('//\n')
@@ -1270,11 +1273,11 @@ def gen_writer(path):
     mod_name = 'grc_word_writer.sv'
     file_name = os.path.join(path, mod_name)
     with open(file_name, 'w') as fh:
-
+        add_apache_license(fh)
         fh.write('/*****************************************************************************/\n')
         fh.write('//\n')
         fh.write('// Author      : Phil Vallance\n')
-        fh.write('// File        : grc_complex_writer.sv\n')
+        fh.write('// File        : grc_word_writer.sv\n')
         fh.write('// Description : Simulation utility used to record data to a binary file.\n')
         fh.write('//\n')
         fh.write('//\n')

@@ -10,7 +10,7 @@ import ipdb  # analysis:ignore
 from phy_tools.vgen_xilinx import gen_dsp48E1, gen_dsp48E2
 from phy_tools.adv_pfb import gen_pfb
 import phy_tools.vhdl_gen as vhdl_gen
-from phy_tools.verilog_gen import gen_ram, gen_axi_fifo, gen_slicer, name_help, gen_rom, ret_addr_width, axi_fifo_inst
+from phy_tools.verilog_gen import add_apache_license, gen_ram, gen_axi_fifo, gen_slicer, name_help, gen_rom, ret_addr_width, axi_fifo_inst
 from phy_tools.verilog_gen import gen_axi_downsample
 from phy_tools.gen_utils import ret_module_name, ret_file_name, ret_valid_path, print_header
 from phy_tools.fp_utils import ret_num_bitsU
@@ -120,7 +120,7 @@ def gen_dec_filter(path, fil_obj, prefix='', tuser_width=0, tlast=False, ram_sty
     file_name = path + '{}dec_fil.v'.format(prefix)
     module_name = ret_module_name(file_name)
     with open(file_name, "w") as fh:
-
+        add_apache_license(fh)
         fh.write('/*****************************************************************************/\n')
         fh.write('//\n')
         fh.write('// File        : {}.v\n'.format(module_name))
@@ -836,6 +836,7 @@ def gen_comb(path, cic_obj, prefix='', tuser_width=0, tlast=False):
         m_bits = ret_num_bitsU(cic_obj.m_max)
         depth_bits = ret_num_bitsU(depth - 1)
 
+        add_apache_license(fh)
         fh.write('\n')
         fh.write('/*****************************************************************************/\n')
         fh.write('//\n')
@@ -1056,6 +1057,7 @@ def gen_cic_top(path, cic_obj, count_val=1024, qvec_correction=None, prefix='', 
 
     # generate final fifo to create a fully axi compliant interface
     with open(file_name, 'w') as fh:
+        add_apache_license(fh)
         fh.write('\n')
         fh.write('/*****************************************************************************/\n')
         fh.write('//\n')
