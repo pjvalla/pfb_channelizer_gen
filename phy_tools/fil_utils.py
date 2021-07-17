@@ -33,7 +33,7 @@ dpi = 300
 max_uprate = 5000
 taps_per_phase = 48
 
-curr_dir = str(Path(__file__).parent.resolve())
+CURR_DIR = str(Path(__file__).parent.resolve())
 
 def gen_fixed_poly_filter(poly_fil, qvec_coef=(25, 24), qvec=(16, 15), qvec_out=None, P=1, correlator=False):
     """
@@ -234,12 +234,12 @@ def gen_resamp_fil(path='./'):
     freq_vector = np.pi * np.arange(-10 * fc, 10 * fc, freq_step)
     (w_vec, h_log) = ret_fil_freq_resp(resamp_fil.b, freq_vector, rot_freq=False)
 
-    plot_psd(ax1, w_vec, h_log, title=r'$\sf{{Proto\ Filter\ Full}}$', miny=-300, maxy=20, xprec=3)
+    plot_psd(ax1, w_vec, h_log, title=r'$\sf{{Proto\ Filter\ Full}}$', miny=-300, maxy=20, xprec=4)
     png_file = path + '/resamp_fil.png'
     fig.savefig(png_file, dpi=dpi)
 
 
-def resampler(input_vec, resamp_rat, max_uprate=5000, taps_per_phase=48, fc=None, use_base_rfil=False):
+def resampler(input_vec, resamp_rat, max_uprate=5000, taps_per_phase=48, fc=None, use_base_rfil=False, plot_base_rfil=False):
     """
         Implements a Resampler based on a nearest neighbor Polyphase
         interpolator. Generates the filter internally and applies the nearest
@@ -265,7 +265,7 @@ def resampler(input_vec, resamp_rat, max_uprate=5000, taps_per_phase=48, fc=None
 
     # this filter ensures that the input vector is resampled the 4 samples per baud.
     # the high K value generates a sharp transition
-    file_name = curr_dir + '/init_fil_{}_{}.p'.format(4, 1)
+    file_name = CURR_DIR + '/init_fil_{}_{}.p'.format(4, 1)
     try:
         with open(file_name, 'rb') as fh:
             init_fil = pickle.load(fh)
@@ -276,24 +276,31 @@ def resampler(input_vec, resamp_rat, max_uprate=5000, taps_per_phase=48, fc=None
 
     fil_gain = np.sum(init_fil.b) / 4.
     init_fil.b /= fil_gain
+    input_len = len(input_vec)
     input_vec = signal.upfirdn(init_fil.b, input_vec, 4, 1)   # , all_samples=False)
 
-    grp_delay = (taps_phase * 4 - 1) // 2
-    input_vec = input_vec[grp_delay:-grp_delay]
     # always going up by a factor of 4.  Relaxes filter constraints considerably.
     up_rate = max_uprate
     if use_base_rfil:
         fc = .55 / max_uprate
         step = int((1. / resamp_rat) * max_uprate)
         try:
-            file_name = curr_dir + '/resamp_fil_{}.p'.format(max_uprate)
+            file_name = CURR_DIR + '/resamp_fil_{}.p'.format(max_uprate)
             with open(file_name, 'rb') as fh:
                 resamp_fil = pickle.load(fh)
         except:
             resamp_fil = LPFilter(P=max_uprate, num_taps=taps_phase * max_uprate, num_iters=1, quick_gen=1, sba=-120, pbr=.1,
                                   trans_bw=.65 * fc, fc=fc, K=15.06, freqz_pts=20_000)
+
             with open(file_name, 'wb') as fh:
                 pickle.dump(resamp_fil, fh)
+
+            if plot_base_rfil:
+                freq_limit = 2. / max_uprate
+                freq_vector = np.linspace(-freq_limit, freq_limit, 2048)
+                path = CURR_DIR + '/'
+                resamp_fil.plot_psd(title=r'$\sf{Base\ Filter}$', pwr_pts=SIX_DB, freq_vector=freq_vector,
+                                    plot_on=False, savefig=True, dpi=100, path=path, xprec=5)
 
     else:
         frac_obj = Fraction.from_float(1. / (resamp_rat)).limit_denominator(max_uprate)
@@ -303,7 +310,7 @@ def resampler(input_vec, resamp_rat, max_uprate=5000, taps_per_phase=48, fc=None
         # Resampling
         fc = .55 / up_rate
         try:
-            file_name = curr_dir + '/resamp_fil_{}_{}.p'.format(up_rate, step)
+            file_name = CURR_DIR + '/resamp_fil_{}_{}.p'.format(up_rate, step)
             with open(file_name, 'rb') as fh:
                 resamp_fil = pickle.load(fh)
         except:
@@ -324,10 +331,9 @@ def resampler(input_vec, resamp_rat, max_uprate=5000, taps_per_phase=48, fc=None
     # Use the arbitrary resampler to configure any signal bandwidth desired.
     fil_gain = np.sum(resamp_fil.b) / up_rate
     resamp_fil.b /= fil_gain
-    output = signal.upfirdn(resamp_fil.b, input_vec, up_rate, step)
-    grp_delay = int(resamp_rat * taps_per_phase - 1) // 2
-    output = output[grp_delay:-grp_delay]
-    return output[::4]
+    output = signal.upfirdn(resamp_fil.b, input_vec, up_rate, step)[::4]
+    grp_delay = int(len(output) - input_len * resamp_rat // 2)
+    return output[grp_delay:-grp_delay]
 
 def ret_fil_freq_resp(taps, freq_vector=None, whole=True, freq_pts=5000, rot_freq=False):
     """
@@ -1657,7 +1663,8 @@ class LPFilter(object):
 
         plot_psd(ax, omega, h_log, freq_pts=freq_pts, miny=miny, maxy=maxy, titlesize=titlesize, labelsize=labelsize, title=title, xprec=3)
 
-    def plot_psd(self, title=None, miny=None, freq_vector=None, fft_size=1024, plot_on=True, savefig=False, pwr_pts=None, dpi=100):
+    def plot_psd(self, title=None, miny=None, freq_vector=None, fft_size=1024, plot_on=True, savefig=False, 
+                 pwr_pts=None, dpi=100, path='./', xprec=5):
 
         """
                 Helper function that generates a Frequency response plot.
@@ -1668,7 +1675,8 @@ class LPFilter(object):
             freq_vector = np.arange(-1., 1., step)
 
         omega, h_log = self.ret_psd(self.b, freq_vector=freq_vector)
-        plot_psd_helper((omega, h_log), title=title, miny=miny, plot_on=plot_on, savefig=savefig, pwr_pts=pwr_pts, dpi=dpi)
+        plot_psd_helper((omega, h_log), title=title, miny=miny, plot_on=plot_on, savefig=savefig, 
+                        pwr_pts=pwr_pts, dpi=dpi, path=path, xprec=xprec)
 
     def ret_psd(self, b=None, freq_vector=None, nbins=None):
         """
