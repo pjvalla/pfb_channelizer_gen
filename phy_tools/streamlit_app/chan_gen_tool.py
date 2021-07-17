@@ -102,7 +102,7 @@ def update_chan_obj(session_state):
 def remove_files(path):
     ip_files = os.listdir(path)
     for item in ip_files:
-        if item.endswith(".v") or item.endswith(".xci") or item.endswith(".sv") or item.endswith(".bin") or item.endswith(".do"):
+        if item.endswith(".v") or item.endswith(".vh") or item.endswith(".xci") or item.endswith(".sv") or item.endswith(".bin") or item.endswith(".do"):
             os.remove(os.path.join(path, item))
 
 if chan_type == 'M/2':
