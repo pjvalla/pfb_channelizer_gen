@@ -48,6 +48,14 @@ QVEC = (16, 15)
 IP_PATH = './tmp/'
 AVG_LEN = 256
 
+primaryColor = st.get_option("theme.primaryColor")
+s = f"""
+<style>
+div.stButton > button:first-child {{ border: 1px solid {primaryColor}; border-radius:5px 5px 5px 5px; font-size:14px;}}
+<style>
+"""
+st.markdown(s, unsafe_allow_html=True)
+
 st.title('Channelizer Verilog Generation Tool')
 
 fft_list = tuple(2 ** np.arange(3, 17))
@@ -55,13 +63,36 @@ db_list = tuple(np.arange(-60, -300, -20))
 gen_2X = False
 
 # fc_scale = st.
-max_fft = st.sidebar.selectbox("Maximum Number of Channels", fft_list, index=3)
-taps_per_phase = st.sidebar.number_input("Taps Per Arm of PFB", value=16, min_value=12, max_value=64)
-chan_type = st.sidebar.radio("Channelizer Type", ('M', 'M/2'))
-dsp_type = st.sidebar.radio("DSP Type", ('DSP48E1', 'DSP48E2'))
+
+col_fft, col_tps = st.sidebar.beta_columns(2)
+max_fft = col_fft.selectbox("Max # of Channels", fft_list, index=3)
+taps_per_phase = col_tps.number_input("Taps Per Arm of PFB", value=16, min_value=12, max_value=64)
+
+col_type, col_dsp = st.sidebar.beta_columns(2)
+chan_type = col_type.radio("Channelizer Type", ('M', 'M/2'))
+dsp_type = col_dsp.radio("DSP Type", ('DSP48E1', 'DSP48E2'))
+
+# col_db, col_fc = st.sidebar.beta_columns(2)
 min_db = st.sidebar.selectbox("Plot Min DB", db_list, index=3)
-fc_scale = st.sidebar.number_input("Cut off Frequency (Proportional to Bin Width)", value=.75, min_value=0.5, max_value=1.0)
-tbw_scale = st.sidebar.number_input("Transition Bandwidth (Proportional to Bin Width) - M/2 Designs should relax specs", value=.20, min_value=0.09, max_value=1.0)
+fc_scale = st.sidebar.number_input("Cut off Frequency \u221D Bin Width", value=.75, min_value=0.5, max_value=1.0)
+multiline_str = ("Transition BW \u221D Bin Width "
+                "M/2 designs should relax specs")
+
+# st.sidebar.write("Transition BW \u221D Bin Width")
+# st.sidebar.write("M/2 designs should relax specs")
+
+st.markdown("""
+<style>
+.small-font {
+    font-size:14px !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# st.sidebar.markdown('<p class="small-font">M/2 designs should relax specs</p>', unsafe_allow_html=True)
+# st.sidebar.markdown(
+#     '<p class="small-font">Transition BW \u221D Bin Width<br> M/2 designs should relax specs</p>', unsafe_allow_html=True)
+tbw_scale = st.sidebar.number_input(label='Trans. BW \u221D Bin Width : M/2 design can relax spec', value=.20, min_value=0.09, max_value=1.0)
 
 K_orig = OrderedDict([(8, 9.169244999999984), (16, 9.169244999999984), (32, 9.169244999999984),
                       (64, 9.169244999999984), (128, 9.169244999999984), (256, 9.169244999999984), (512, 9.169244999999984),
@@ -112,18 +143,26 @@ else:
     gen_2X = False
     chan_str = 'M'
 
-st.sidebar.markdown("""
-<style>
-.small-font {
-    font-size:100px !important;
-}
-</style>
-""", unsafe_allow_html=True)
+# st.sidebar.markdown("""
+# <style>
+# .small-font {
+#     font-size:15px !important;
+# }
+# </style>
+# """, unsafe_allow_html=True)
 
-st.sidebar.markdown('<p class="big-font">Click Optimize Filter after updating filter settings</p>', unsafe_allow_html=True)
-opt_button = st.sidebar.button('Optimize Filter')
-gen_button = st.sidebar.button('Generate Verilog')
-gen_taps_button = st.sidebar.button('Generate Taps -- Pandas pickle')
+# st.sidebar.markdown('<p class="small-font">Opt Filter: calc. filter parameters using settings<br>Gen Code : output Verilog<br>Gen Taps : gen pandas pkl file containing taps</p>', unsafe_allow_html=True)
+
+fil_markdown = '''Calc. filter parameters (K, offset, MSB)   
+using settings above'''.strip()
+
+taps_markdown = '''gen pandas pkl file containing taps  
+for FFT sizes up to Max # of Channels'''
+
+col_opt, col_gen, col_taps = st.sidebar.beta_columns([1, 1, 1])
+opt_button = col_opt.button('Opt\u00a0Filter', help=fil_markdown) #'Calc. filter parameters (K, offset, MSB) using settings above')
+gen_button = col_gen.button('Gen\u00a0Code', help='Generate Verilog Code')
+gen_taps_button = col_taps.button('Gen\u00a0Taps', help=taps_markdown)
 
 def opt_params(): 
     # st.write("Optimizing Taps = {}".format(opt_button))
@@ -148,6 +187,9 @@ if opt_button:
     session_state.msb_terms = OrderedDict(msb_terms)
     session_state.offset_terms = OrderedDict(offset_terms)
 
+    df = pd.DataFrame({'K': K_terms[0][1], 'offset': offset_terms[0][1], 'PFB MSB': msb_terms[0][1]}, index=[0])
+    st.sidebar.dataframe(df)
+
 
 # @st.cache
 def update_psd(session_state): 
@@ -162,7 +204,6 @@ def update_psd(session_state):
     resp, omega = chan_obj.gen_psd(freq_vector=freq_vector, fixed_taps=True)
     data_dict = {'Omega': omega, 'PSD':resp, 'sig_idx': 0}
     return pd.DataFrame(data_dict)
-
 
 def gen_taps(session_state): 
     ret_df = pd.DataFrame()
