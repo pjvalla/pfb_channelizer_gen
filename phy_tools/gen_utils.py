@@ -197,7 +197,7 @@ def conv_to_sym(data, sym_index):
         * syms     : IQ symbols of mapped data
     """
     data_int = data.copy()
-    data_int = fp_utils.bin_array_to_uint(data_int.T)
+    data_int = fp_utils.bin_array_to_uint(np.atleast_2d(data_int.T))
 
     return sym_index[data_int]
 
@@ -505,7 +505,7 @@ def conv_to_sym(data, sym_index):
 
     """
     data_int = data.copy()
-    data_int = fp_utils.bin_array_to_uint(data_int.T)
+    data_int = fp_utils.bin_array_to_uint(np.atleast_2d(data_int.T))
 
     return sym_index[data_int]
 

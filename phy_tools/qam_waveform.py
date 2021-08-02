@@ -254,7 +254,7 @@ class QAM_Mod(object):
             * syms     : IQ symbols of mapped data
         """
         data_int = data.copy()
-        data_int = fp_utils.bin_array_to_uint(data_int.T)
+        data_int = fp_utils.bin_array_to_uint(np.atleast_2d(data_int.T))
 
         return sym_index[data_int]
 
@@ -339,7 +339,7 @@ class QAM_Mod(object):
 
     def gen_frames(self, num_frames, frame_space_mean=1000, frame_space_std=200,
                    seed=10, cen_freq=0, sig_bw=.5, snr=None, noise_seed=None, retime_percent=None,
-                   min_samps=None, sym_snr=None):
+                   min_samps=None, sym_snr=None, crc_on=True):
 
         gaps = (frame_space_std * np.random.standard_normal((num_frames+1,)) + frame_space_mean)
 
@@ -372,9 +372,12 @@ class QAM_Mod(object):
             data = utils.gen_rand_data(ii, num_data_bits, dtype=int)
             # prepend a 0
             # calculate crc
-            crc_val = utils.crc_comp(data, spec='crc32')
-            # append CRC bits.
-            data_block = np.concatenate((data, crc_val))
+            if crc_on:
+                crc_val = utils.crc_comp(data, spec='crc32')
+                # append CRC bits.
+                data_block = np.concatenate((data, crc_val))
+            else:
+                data_block = data
 
             # generate symbols
             data_syms = self.gen_syms(self.data_sym_index, self.data_bit_sym, data_block)
@@ -390,8 +393,11 @@ class QAM_Mod(object):
             if sym_snr is not None:
                 no_i, no_q = utils.est_no(sym_snr, curr_frame)
             else:
-                # this is so after base-band filter you would get the original symbol SNR.
-                no_i, no_q = utils.est_no(snr + db_val, curr_frame)
+                # this is so after baseband filter you would get the original symbol SNR.
+                if snr is not None:
+                    no_i, no_q = utils.est_no(snr + db_val, curr_frame)
+                else:
+                    no_i, no_q = (0., 0.)
 
             if self.plot_on:
                 fig, ax = plt.subplots()

@@ -8,7 +8,7 @@ import numpy as np
 from phy_tools.fp_utils import sfi, comp_max_value, nextpow2, ret_num_bitsS, ret_num_bitsU, ufi, Fi, coe_write
 import scipy as sp
 import scipy.signal as signal
-from phy_tools.plt_utils import gen_freq_vec, plot_psd_helper, plot_stem, plot_psd
+from phy_tools.plt_utils import gen_freq_vec, plot_psd_helper, plot_stem, plot_psd, SIX_DB
 from phy_tools.gen_utils import upsample, find_nearest
 import copy
 from fractions import Fraction
@@ -226,7 +226,7 @@ def gen_resamp_fil(path='./'):
     fig.set_size_inches(8., 6.)
     fig.subplots_adjust(left=.08, bottom=.15, top=.93, right=.96, hspace=.6)
     fig.set_tight_layout(False)
-    plot_psd(ax, resamp_fil.omega, resamp_fil.h_log, pwr_pts=resamp_fil.fc_atten, title=r'$\sf{{Proto\ Filter}}$', miny=-200, xprec=5)
+    plot_psd(ax, resamp_fil.omega, resamp_fil.h_log, pwr_pts=resamp_fil.fc_atten, title=r'$\sf{{Proto\ Filter}}$', miny=-200, maxy=20, xprec=5)
 
     start_freq = -10 * fc
     stop_freq = 10 * fc
@@ -315,7 +315,7 @@ def resampler(input_vec, resamp_rat, max_uprate=5000, taps_per_phase=48, fc=None
                 resamp_fil = pickle.load(fh)
         except:
             resamp_fil = LPFilter(P=up_rate, num_taps=taps_phase * up_rate, num_iters=1, quick_gen=1, sba=-120, pbr=.1,
-                                trans_bw=.45 * fc, fc=fc, K=12.0)
+                                  trans_bw=.45 * fc, fc=fc, K=12.0)
 
             with open(file_name, 'wb') as fh:
                 pickle.dump(resamp_fil, fh)
@@ -1812,7 +1812,7 @@ class LPFilter(object):
         start_freq = start_freq * np.pi
         freq_step = ((stop_freq - start_freq) / freqz_pts)
         freq_vector = np.arange(start_freq, stop_freq, freq_step)
-        (omega, h_val) = sp.signal.freqz(self.b, worN=freq_vector)
+        (omega, h_val) = sp.signal.freqz(self.b, 1, worN=freq_vector)
 
         return (omega, h_val, freq_step)
 
@@ -1996,6 +1996,7 @@ class LPFilter(object):
 
         omega = None
         h_val = None
+        h_log = None
         while 1:
             # vector of frequency band edges
             # using remez
@@ -2020,7 +2021,7 @@ class LPFilter(object):
                 # poor filter design break loop and return
                 break
             else:
-                (omega, h_val, loop_cnt, curr_fc, freq_diff, bw_diff, trans_bw) = ret_val
+                (omega, h_log, loop_cnt, curr_fc, freq_diff, bw_diff, trans_bw) = ret_val
 
             # plot_psd_helper(ax, omega, h_log, pwr_pts=self.fc_atten, label=r'\sf{Proto Filter}', miny=-200)
             # estimate transition bandwidth
@@ -2038,8 +2039,8 @@ class LPFilter(object):
                 break
 
         self.omega = omega
-        self.h = np.abs(h_val)
-        self.h_log = 20 * np.log10(np.abs(h_val))
+        self.h = 10 ** (h_log / 20.)
+        self.h_log = h_log
 
     def gen_filter(self):
         """

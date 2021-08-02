@@ -12,7 +12,9 @@ import matplotlib.pyplot as plt
 from matplotlib import rc
 from matplotlib import rcParams
 from matplotlib.ticker import MaxNLocator, FormatStrFormatter
+
 import matplotlib.patches as patches
+from matplotlib.patches import BoxStyle
 import copy
 import sys
 from collections.abc import Iterable
@@ -27,8 +29,8 @@ except CalledProcessError:
     today = date.today()
     __version__ = today.strftime("%Y.%m.%d")
 
-three_db = 10 * np.log10(.5)
-six_db = 10 * np.log10(.25)
+THREE_DB = 10 * np.log10(.5)
+SIX_DB = 10 * np.log10(.25)
 
 rc('text', usetex=False)
 
@@ -175,6 +177,7 @@ def fig_wrap_up(fig, title=None, savefig=False, plot_on=False, pickle_fig=False,
 
     if savefig and title is not None:
         png_name = file_name + ".png"
+        print(png_name)
         fig.savefig(png_name, dpi=dpi)
 
     if pickle_fig is True and title is not None:
@@ -184,7 +187,7 @@ def fig_wrap_up(fig, title=None, savefig=False, plot_on=False, pickle_fig=False,
 
     if plot_on is True:
         fig.canvas.draw()
-
+    
     return fig
 
 class NotAMovie(object):
@@ -268,7 +271,7 @@ def win_sel(win_str, win_size):
     return win, overlap
 
 
-def find_pwr(resp, pwr_val=three_db):
+def find_pwr(resp, pwr_val=THREE_DB):
     """
         Helper function returns the indices containing the half-pwr or -3 dB
         indices. The expected psd is the shape of a  typical lower pass filter,
@@ -359,7 +362,7 @@ def plot_const_diag(const_sig, title=None, label=None, format_str=None, linestyl
 def plot_psd_helper(signal, fft_size=1024, pwr_pts=None, freq_pts=None, label=None, plot_time=False, normalize=True,
                     format_str=None, color=None, marker=None, markersize=None, linewidth=None, linestyle=None, alpha=1.,
                     minx=None, maxx=None, miny=None, maxy=None, titlesize=12, labelsize=10, legendsize=10, title=None, min_n_ticks=4,
-                    xlabel=None, ylabel=None, xprec=None, yprec=None, plt_size=(8., 6.), ax=None, ax1=None, ax2=None,
+                    xlabel=None, ylabel=0, xprec=3, yprec=None, plt_size=(8., 6.), ax=None, ax1=None, ax2=None,
                     window='blackmanharris', noverlap=None, nperseg=None, return_onesided=False, savefig=False,
                     plot_on=False, path='./', dpi=dpi, time_sig=None, pickle_fig=False, ytime_max=None, ytime_min=None):
 
@@ -427,7 +430,7 @@ def plot_psd_helper(signal, fft_size=1024, pwr_pts=None, freq_pts=None, label=No
 
     if plot_time is True:
         real_sig = [np.real(sig) for sig in time_sig]
-        plot_time_sig(ax1, real_sig, None, color=color, marker=marker, markersize=markersize,
+        plot_time_sig(ax1, real_sig, None, color=color, marker=marker, markersize=markersize, 
                       linewidth=linewidth, linestyle=linestyle, format_str=format_str, labelsize=labelsize,
                       titlesize=titlesize, alpha=alpha, legendsize=legendsize, miny=ytime_min, maxy=ytime_max)
         if np.iscomplexobj(time_sig) is True:
@@ -1020,7 +1023,7 @@ def plot_psd(ax, wvec, resp, format_str=None, title=None, label=None, min_n_tick
     #     rcParams.update({'lines.markersize': markersize})
 
     gen_box = False
-    props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
+    props = dict(boxstyle=BoxStyle("Round, pad=0.7"), facecolor='wheat', alpha=0.5, )
     if (pwr_pts is not None) or (freq_pts is not None):
         gen_box = True
 
@@ -1059,7 +1062,7 @@ def plot_psd(ax, wvec, resp, format_str=None, title=None, label=None, min_n_tick
             final_text += text_str
 
     if gen_box:
-        ax.text(0.05, 0.95, final_text, transform=ax.transAxes, fontsize=14, verticalalignment='top', bbox=props)
+        ax.text(0.05, 0.93, final_text, transform=ax.transAxes, fontsize=legendsize, verticalalignment='center', bbox=props)
 
     maxy = 3. + resp.max() if maxy is None else maxy
     miny = resp.min() if miny is None else miny

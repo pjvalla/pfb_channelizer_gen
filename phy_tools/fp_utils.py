@@ -10,7 +10,7 @@ import binascii
 
 from io import StringIO
 import copy
-from mpmath import mp
+from numba import njit, int64
 import ipdb
 
 from subprocess import check_output, CalledProcessError, DEVNULL
@@ -585,7 +585,7 @@ def dec_to_list(dec_val, num_bits):
 
     return ret_list
 
-
+@njit(int64[:](int64[:, :]), cache=False)
 def bin_array_to_uint(data_vec):
     """
         Converts 1 / 0 array to unsigned integer array representing
@@ -594,23 +594,15 @@ def bin_array_to_uint(data_vec):
         Each binary vector that is to be converted to an unsigned number
         lies on each row of the vector.
     """
-    data_int = np.atleast_2d(data_vec)
-    num_bits = np.size(data_int, 1)
-    mp.prec = num_bits
-
-    ret_val = []
-    for vec in data_int:
+    ret_val = np.zeros((np.shape(data_vec)[0],), dtype=np.int64)
+    for ii, vec in enumerate(data_vec):
         sum_value = 0
-        for idx, bin_bit in enumerate(reversed(vec)):
-            if bin_bit == 1:
-                sum_value += int(mp.power(2, idx))
-        ret_val.append(sum_value)
+        for bit in vec:
+            sum_value = (sum_value << 1) | bit
 
-    if len(ret_val) == 1:
-        ret_val = ret_val[0]
-
+        ret_val[ii] = sum_value
+        
     return ret_val
-
 
 def bin_to_udec(bin_vec):
     """
