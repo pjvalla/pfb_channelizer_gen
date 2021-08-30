@@ -166,6 +166,8 @@ class Channelizer(object):
         self.rate = 2 if self.gen_2X else 1
         self.tbw_scale = tbw_scale
         self.freqz_pts = freqz_pts
+        self.K = None
+        self.fc_scale = None
 
         if taps is None:
             self.num_taps = M * taps_per_phase

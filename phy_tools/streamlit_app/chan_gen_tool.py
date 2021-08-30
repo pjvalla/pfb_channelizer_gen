@@ -64,15 +64,14 @@ gen_2X = False
 
 # fc_scale = st.
 
-col_fft, col_tps = st.sidebar.beta_columns(2)
+col_fft, col_tps = st.sidebar.columns(2)
 max_fft = col_fft.selectbox("Max # of Channels", fft_list, index=3)
 taps_per_phase = col_tps.number_input("Taps Per Arm of PFB", value=16, min_value=12, max_value=64)
 
-col_type, col_dsp = st.sidebar.beta_columns(2)
+col_type, col_dsp = st.sidebar.columns(2)
 chan_type = col_type.radio("Channelizer Type", ('M', 'M/2'))
 dsp_type = col_dsp.radio("DSP Type", ('DSP48E1', 'DSP48E2'))
 
-# col_db, col_fc = st.sidebar.beta_columns(2)
 min_db = st.sidebar.selectbox("Plot Min DB", db_list, index=3)
 fc_scale = st.sidebar.number_input("Cut off Frequency \u221D Bin Width", value=.75, min_value=0.5, max_value=1.0)
 multiline_str = ("Transition BW \u221D Bin Width "
@@ -159,7 +158,7 @@ using settings above'''.strip()
 taps_markdown = '''gen pandas pkl file containing taps  
 for FFT sizes up to Max # of Channels'''
 
-col_opt, col_gen, col_taps = st.sidebar.beta_columns([1, 1, 1])
+col_opt, col_gen, col_taps = st.sidebar.columns([1, 1, 1])
 opt_button = col_opt.button('Opt\u00a0Filter', help=fil_markdown) #'Calc. filter parameters (K, offset, MSB) using settings above')
 gen_button = col_gen.button('Gen\u00a0Code', help='Generate Verilog Code')
 gen_taps_button = col_taps.button('Gen\u00a0Taps', help=taps_markdown)
