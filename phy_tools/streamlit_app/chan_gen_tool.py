@@ -12,7 +12,6 @@ from phy_tools.plotly_utils import plotly_time_helper
 from phy_tools.gen_xfft import gen_xfft_xci
 from phy_tools.plt_utils import find_pwr
 from phy_tools.fp_utils import dec_to_hex
-import SessionState
 
 import pandas as pd
 from collections import OrderedDict
@@ -105,27 +104,30 @@ msb_orig = OrderedDict([(8, 39), (16, 39), (32, 39), (64, 39), (128, 39), (256, 
 offset_orig = OrderedDict([(8, .5), (16, .5), (32, .5), (64, .5), (128, .5), (256, .5), (512, 0.5), (1024, 0.5), 
                             (2048, 0.5), (4096, 0.5), (8192, 0.5), (16384, 0.5), (32768, 0.5), (65536, 0.5)])
 
-session_state = SessionState.get(K_terms=K_orig, msb_terms=msb_orig, offset_terms=offset_orig)
+st.session_state['K_terms'] = K_orig
+st.session_state['msb_terms'] = msb_orig
+st.session_state['offset_terms'] = offset_orig 
+# SessionState.get(K_terms=K_orig, msb_terms=msb_orig, offset_terms=offset_orig)
 
 dsp48e2 = True if dsp_type == 'DSP48E2' else False
 qvec_coef = ret_qcoef(dsp48e2)
 
-def update_chan_obj(session_state): 
+def update_chan_obj(): 
 
     try:
         return Channelizer(M=max_fft, taps_per_phase=taps_per_phase, gen_2X=gen_2X, qvec=QVEC,
                            qvec_coef=qvec_coef, fc_scale=fc_scale, tbw_scale=tbw_scale, 
-                           K_terms=session_state.K_terms, offset_terms=session_state.offset_terms, 
-                           desired_msb=session_state.msb_terms[max_fft])
+                           K_terms=st.session_state.K_terms, offset_terms=st.session_state.offset_terms, 
+                           desired_msb=st.session_state.msb_terms[max_fft])
     except:
-        session_state.K_terms = K_orig
-        session_state.msb_terms = msb_orig
-        session_state.offset_terms = offset_orig
+        st.session_state.K_terms = K_orig
+        st.session_state.msb_terms = msb_orig
+        st.session_state.offset_terms = offset_orig
     finally:
         return Channelizer(M=max_fft, taps_per_phase=taps_per_phase, gen_2X=gen_2X, qvec=QVEC,
                            qvec_coef=qvec_coef, fc_scale=fc_scale, tbw_scale=tbw_scale,
-                           K_terms=session_state.K_terms, offset_terms=session_state.offset_terms,
-                           desired_msb=session_state.msb_terms[max_fft])
+                           K_terms=st.session_state.K_terms, offset_terms=st.session_state.offset_terms,
+                           desired_msb=st.session_state.msb_terms[max_fft])
 
 
     # remove all .v and .xci files from IP_PATH
@@ -182,18 +184,18 @@ if opt_button:
         K_terms.append((fft_size, kterm))
         msb_terms.append((fft_size, msbterm))
         offset_terms.append((fft_size, offterm))
-    session_state.K_terms = OrderedDict(K_terms)
-    session_state.msb_terms = OrderedDict(msb_terms)
-    session_state.offset_terms = OrderedDict(offset_terms)
+    st.session_state.K_terms = OrderedDict(K_terms)
+    st.session_state.msb_terms = OrderedDict(msb_terms)
+    st.session_state.offset_terms = OrderedDict(offset_terms)
 
     df = pd.DataFrame({'K': K_terms[0][1], 'offset': offset_terms[0][1], 'PFB MSB': msb_terms[0][1]}, index=[0])
     st.sidebar.dataframe(df)
 
 
 # @st.cache
-def update_psd(session_state): 
+def update_psd(): 
     # print("updating PSD")
-    chan_obj = update_chan_obj(session_state) 
+    chan_obj = update_chan_obj() 
     fft_size = 2048
     minx = -4. / max_fft
     maxx = 4. / max_fft
@@ -204,12 +206,12 @@ def update_psd(session_state):
     data_dict = {'Omega': omega, 'PSD':resp, 'sig_idx': 0}
     return pd.DataFrame(data_dict)
 
-def gen_taps(session_state): 
+def gen_taps(): 
     ret_df = pd.DataFrame()
     max_taps = max_fft * taps_per_phase
     for fft_size in fft_list:
     # generate all taps upto max_fft.
-        chan_obj = update_chan_obj(session_state) 
+        chan_obj = update_chan_obj() 
         pad = max_taps - len(chan_obj.taps)
         taps = np.pad(chan_obj.taps, (0, pad), mode='constant', constant_values=0.)
         fixed_taps = np.pad(chan_obj.taps_fi.flatten(), (0, pad), mode='constant', constant_values=0)
@@ -232,14 +234,14 @@ def gen_taps(session_state):
 
 
 # @st.cache
-def update_stem(session_state): 
-    chan_obj = update_chan_obj(session_state)
+def update_stem(): 
+    chan_obj = update_chan_obj()
     taps = chan_obj.taps
     data_dict = {'Taps': taps, 'sig_idx': 0}
     return pd.DataFrame(data_dict)
 
 if gen_taps_button:
-    gen_taps(session_state)
+    gen_taps()
 
 
 if gen_button:
@@ -247,7 +249,7 @@ if gen_button:
     if not os.path.exists(IP_PATH):
         os.makedirs(IP_PATH)
     remove_files(IP_PATH)           
-    chan_obj = update_chan_obj(session_state)
+    chan_obj = update_chan_obj()
     print("===========================================================")
     print("Generate K {}, Mmax {}".format(chan_obj.K, chan_obj.Mmax))
     print("===========================================================")
@@ -292,7 +294,7 @@ else:
     # st.write('New Channelizer')
 
 
-psd_df = update_psd(session_state) #, taps_per_phase, gen_2X, max_fft, dsp_type)
+psd_df = update_psd() #, taps_per_phase, gen_2X, max_fft, dsp_type)
 # try:
 
 minx = -4. / max_fft
@@ -470,7 +472,7 @@ config = dict({
 fig.update_layout(autosize=False, width=900, height=550, margin=dict(l=20, r=40, b=40, t=70))
 st.plotly_chart(fig, config= config)
 
-stem_df = update_stem(session_state) #, taps_per_phase, gen_2X, max_fft, dsp_type)
+stem_df = update_stem() #, taps_per_phase, gen_2X, max_fft, dsp_type)
 try:
     # ipdb.set_trace()
     num_rows = len(stem_df)
