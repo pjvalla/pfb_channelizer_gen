@@ -104,10 +104,10 @@ msb_orig = OrderedDict([(8, 39), (16, 39), (32, 39), (64, 39), (128, 39), (256, 
 offset_orig = OrderedDict([(8, .5), (16, .5), (32, .5), (64, .5), (128, .5), (256, .5), (512, 0.5), (1024, 0.5), 
                             (2048, 0.5), (4096, 0.5), (8192, 0.5), (16384, 0.5), (32768, 0.5), (65536, 0.5)])
 
-st.session_state['K_terms'] = K_orig
-st.session_state['msb_terms'] = msb_orig
-st.session_state['offset_terms'] = offset_orig 
-# SessionState.get(K_terms=K_orig, msb_terms=msb_orig, offset_terms=offset_orig)
+if 'K_terms' not in st.session_state:
+    st.session_state['K_terms'] = K_orig
+    st.session_state['msb_terms'] = msb_orig
+    st.session_state['offset_terms'] = offset_orig 
 
 dsp48e2 = True if dsp_type == 'DSP48E2' else False
 qvec_coef = ret_qcoef(dsp48e2)
