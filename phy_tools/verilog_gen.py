@@ -3085,7 +3085,7 @@ def gen_pipe_mux(path, input_width, output_width, mux_bits=2, one_hot=False, one
     assert (io_ratio.is_integer()), ("Input to Output ratio must be an integer value")
 
     one_hot_width = int(np.ceil(io_ratio))
-    num_sels = np.ceil(np.log2(io_ratio)).astype(np.int)
+    num_sels = np.ceil(np.log2(io_ratio)).astype(np.int32)
 
     # if one_hot:
     #     table = np.arange(one_hot_width)
@@ -3099,7 +3099,7 @@ def gen_pipe_mux(path, input_width, output_width, mux_bits=2, one_hot=False, one
     sels_msb = num_sels - 1
 
     mux_div_factor = 2**mux_bits
-    num_mux_stages = np.ceil(num_sels / mux_bits).astype(np.int)
+    num_mux_stages = np.ceil(num_sels / mux_bits).astype(np.int32)
 
     sel_bits = num_sels
     sel_incr = mux_bits
@@ -3113,7 +3113,7 @@ def gen_pipe_mux(path, input_width, output_width, mux_bits=2, one_hot=False, one
     sel_bits_rem = num_sels
     sel_rhs = 0
     for ii in range(num_mux_stages):
-        io_ratio = np.ceil(io_ratio / mux_div_factor).astype(np.int)
+        io_ratio = np.ceil(io_ratio / mux_div_factor).astype(np.int32)
         num_mux_per_stage.append(io_ratio)
         sel_lhs = sel_rhs + sel_incr - 1
         if sel_lhs > sel_bits - 1:
@@ -3126,7 +3126,7 @@ def gen_pipe_mux(path, input_width, output_width, mux_bits=2, one_hot=False, one
              rhs = ii * curr_width // io_ratio
              temp_ratio.append((lhs, rhs))
         rhs_tuples.append(temp_ratio)
-        curr_width = np.ceil(curr_width / mux_div_factor).astype(np.int)
+        curr_width = np.ceil(curr_width / mux_div_factor).astype(np.int32)
         mux_widths.append(output_width)
 
     sel_strs = []
