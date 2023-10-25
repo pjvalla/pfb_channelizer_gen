@@ -50,7 +50,7 @@ except CalledProcessError:
     today = date.today()
     __version__ = today.strftime("%Y.%m.%d")
 
-#plt.style.use('seaborn')
+plt.style.use('seaborn')
 plt.ion()
 
 dpi = 100

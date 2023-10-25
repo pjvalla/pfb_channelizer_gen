@@ -441,10 +441,10 @@ def comp_fil_gains(taps, P=1):
     taps = np.atleast_2d(taps)
     # need the abs for complex filter taps.
     if P > 1:
-        n_gain = np.max(np.sqrt(np.sum(np.abs(taps)**2, axis=1)))
+        n_gain = np.max(np.sqrt(np.sum(np.abs(np.double(taps))**2, axis=1)))
         s_gain = np.abs(np.max(np.sum(taps, axis=1)))
     else:
-        n_gain = np.max(np.sqrt(np.sum(np.abs(taps)**2)))
+        n_gain = np.max(np.sqrt(np.sum(np.abs(np.double(taps))**2)))
         s_gain = np.abs(np.sum(taps))
 
     snr_gain = 20. * np.log10(s_gain / n_gain)
