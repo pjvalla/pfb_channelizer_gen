@@ -50,7 +50,8 @@ except CalledProcessError:
     today = date.today()
     __version__ = today.strftime("%Y.%m.%d")
 
-plt.style.use('seaborn')
+#print(plt.style.available)
+plt.style.use('seaborn-v0_8')
 plt.ion()
 
 dpi = 100
@@ -286,12 +287,12 @@ class Channelizer(object):
         taps *= taps_gain
         # M = self.M  #len(taps) // self.taps_per_phase
 
-        taps_fi = (taps * (2 ** self.qvec_coef[1])).astype(np.int)
+        taps_fi = (taps * (2 ** self.qvec_coef[1])).astype(np.int32)
         poly_fil = np.reshape(taps_fi, (self.M, -1), order='F')
         max_input = 2**(self.qvec[0] - 1) - 1
 
         # compute noise and signal gain.
-        n_gain = np.max(np.sqrt(np.sum(np.abs(poly_fil)**2, axis=1)))
+        n_gain = np.max(np.sqrt(np.sum(np.abs(np.double(poly_fil))**2, axis=1)))
         s_gain = np.max(np.abs(np.sum(poly_fil, axis=1)))
 
         snr_gain = 20. * np.log10(s_gain / n_gain)

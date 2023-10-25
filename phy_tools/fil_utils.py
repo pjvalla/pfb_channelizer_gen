@@ -370,7 +370,7 @@ def ret_fil_freq_resp(taps, freq_vector=None, whole=True, freq_pts=5000, rot_fre
 
     omega = omega / np.pi
     idx0 = (h == 0.)
-    h[idx0] = np.finfo(np.float).tiny
+    h[idx0] = np.finfo(np.double).tiny
 
     h_log = 20. * np.log10(np.abs(h))
 
@@ -441,10 +441,10 @@ def comp_fil_gains(taps, P=1):
     taps = np.atleast_2d(taps)
     # need the abs for complex filter taps.
     if P > 1:
-        n_gain = np.max(np.sqrt(np.sum(np.abs(taps)**2, axis=1)))
+        n_gain = np.max(np.sqrt(np.sum(np.abs(np.double(taps))**2, axis=1)))
         s_gain = np.abs(np.max(np.sum(taps, axis=1)))
     else:
-        n_gain = np.max(np.sqrt(np.sum(np.abs(taps)**2)))
+        n_gain = np.max(np.sqrt(np.sum(np.abs(np.double(taps))**2)))
         s_gain = np.abs(np.sum(taps))
 
     snr_gain = 20. * np.log10(s_gain / n_gain)
@@ -796,7 +796,7 @@ class DCBlock(object):
         [omega, h_val] = signal.freqz(self.b, self.a, worN=worN, whole=1)
 
         idx0 = (h_val == 0.)
-        h_val[idx0] = np.finfo(np.float).tiny
+        h_val[idx0] = np.finfo(np.double).tiny
         self.omega = omega / np.pi
 
         self.h_log = 20. * np.log10(np.abs(h_val))
@@ -927,7 +927,7 @@ class CICDecFil(object):
     def ret_bmax(self, R=None, M=None):
         R = self.r_max if R is None else R
         M = self.m_max if M is None else M
-        return (np.ceil(self.N * np.log2(R * M) + self.input_width - 1).astype(np.int))
+        return (np.ceil(self.N * np.log2(R * M) + self.input_width - 1).astype(np.int32))
 
     def ret_btrunc(self, b_max):
         return (b_max + 1) - self.output_width
@@ -935,7 +935,7 @@ class CICDecFil(object):
     def ret_m_gain(self, R=None, M=None):
         R = self.r_max if R is None else R
         M = self.m_max if M is None else M
-        temp = np.float(R) * M
+        temp = np.double(R) * M
         gain = temp**self.N
         return np.max(gain)
 
@@ -979,7 +979,7 @@ class CICDecFil(object):
                     and then with comb stages -- no change in bit width through
                     decimator.
         """
-        temp = np.arange(self.r_min, self.r_max + 1).astype(np.float) * self.M
+        temp = np.arange(self.r_min, self.r_max + 1).astype(np.double) * self.M
         gain = temp**self.N
         self.m_gain = np.max(gain)
 
@@ -1004,7 +1004,7 @@ class CICDecFil(object):
         limits = (lim1, lim2)
         limits = sorted(limits, reverse=True)
 
-        self.max_width = np.int(num_bits)
+        self.max_width = np.int32(num_bits)
 
         self.h_vec = np.zeros((2 * self.N, limits[0]))
         # Register growth equation -- Reference Hogenauer's Paper under
@@ -1012,7 +1012,7 @@ class CICDecFil(object):
         for j in np.arange(1, self.N + 1):
             kmax = (self.r_max * self.m_max - 1) * self.N + j - 1
             for k in range(kmax + 1):
-                temp_len = np.int(np.floor(k / (self.r_max * self.m_max)) + 1)
+                temp_len = np.int32(np.floor(k / (self.r_max * self.m_max)) + 1)
                 # pdb.set_trace()
                 temp = np.zeros((temp_len,))
                 for l in range(temp_len):
@@ -1055,10 +1055,10 @@ class CICDecFil(object):
         # From Hogenauer, b_max is the msb (counting from 0) of the filter
         # before truncation.
         # self.b_max = np.ceil(self.N*np.log2(self.r_max*self.m_max) +
-        #                         self.input_width-1).astype(np.int)
+        #                         self.input_width-1).astype(np.int32)
         self.Bk = Bk
         self.bk_floor = np.floor(Bk)
-        self.bit_widths = (num_bits - self.bk_floor).astype(np.int)
+        self.bit_widths = (num_bits - self.bk_floor).astype(np.int32)
         self.msb = msb
 
         return 0
@@ -1220,9 +1220,9 @@ class CICDecFil(object):
 
         num = sp.sin(.5 * np.pi * M * f)
         den = sp.sin(.5 * np.pi * f / self.r_max)
-        idx0 = (np.abs(den) < np.finfo(np.float).tiny)
+        idx0 = (np.abs(den) < np.finfo(np.double).tiny)
         # np.argmin(np.abs(den))
-        den[idx0] = np.finfo(np.float).tiny
+        den[idx0] = np.finfo(np.double).tiny
         resp = (num / den)**(2. * N)
         resp[idx0] = np.max(resp)
 
@@ -1451,7 +1451,7 @@ class LPFilter(object):
             Helper function returns properly designed Half-band filter.
         """
         new_b = self.b
-        vec = np.arange(1, len(new_b) + 1, dtype=np.float)
+        vec = np.arange(1, len(new_b) + 1, dtype=np.double)
         if self.hilbert:
             vec = np.exp(1j * np.pi * vec)
         else:

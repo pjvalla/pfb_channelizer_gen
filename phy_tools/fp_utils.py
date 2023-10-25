@@ -81,7 +81,7 @@ def lappend_udec(int_val, bit_val, num_bits):
         unsigned integer int_val
     """
     temp = np.floor(int_val / 2) + ((1 << (num_bits - 1)) * bit_val)
-    return temp.astype(np.int)
+    return temp.astype(np.int32)
 
 
 def collapse_byte(values):
@@ -159,8 +159,8 @@ class Fi(object):
         self._max_float = comp_max_value(self.qvec, self.signed)
         self._step = comp_slope_value(self.qvec)
 
-        self._min_int = np.int(self._min_float * 2. ** qvec[1])
-        self._max_int = np.int(self._max_float * 2. ** qvec[1])
+        self._min_int = np.int32(self._min_float * 2. ** qvec[1])
+        self._max_int = np.int32(self._max_float * 2. ** qvec[1])
 
         if f_ints:
             self.vec = vec
@@ -177,7 +177,7 @@ class Fi(object):
             Function performs fixed point conversion of input based on overflow, qvec, and signed parameters
         """
         temp = np.around(np.array(vec) * 2.**self.qvec[1], decimals=0)
-        temp = np.atleast_1d(temp).astype(np.int)
+        temp = np.atleast_1d(temp).astype(np.int32)
         max_int = self._max_int
         min_int = self._min_int
 
@@ -214,8 +214,8 @@ class Fi(object):
         vec = self.vec.flatten()
         num_chars = self.qvec[0]
         if self.comp:
-            real_vals = [dec_to_bin(np.real(value).astype(np.int), num_chars) for value in vec]
-            imag_vals = [dec_to_bin(np.imag(value).astype(np.int), num_chars) for value in vec]
+            real_vals = [dec_to_bin(np.real(value).astype(np.int32), num_chars) for value in vec]
+            imag_vals = [dec_to_bin(np.imag(value).astype(np.int32), num_chars) for value in vec]
             ret_val = [real_val + (",j" + imag_val) for (real_val, imag_val) in zip(real_vals, imag_vals)]
         else:
             ret_val =  [dec_to_bin(value, num_chars) for value in vec]
@@ -237,12 +237,12 @@ class Fi(object):
             neg_idx = (imag_vals < 0)
             imag_vals[neg_idx] = (imag_vals[neg_idx] + mod_fac) % mod_fac
 
-            return (real_vals.astype(np.int) + 1j * imag_vals.astype(np.int))
+            return (real_vals.astype(np.int32) + 1j * imag_vals.astype(np.int32))
         else:
             real_vals = np.real(values)
             neg_idx = (real_vals < 0)
             real_vals[neg_idx] =  (real_vals[neg_idx] + mod_fac) % mod_fac
-            return real_vals.astype(np.int)
+            return real_vals.astype(np.int32)
 
     @property
     def hex(self):
@@ -253,8 +253,8 @@ class Fi(object):
         num_chars = int(np.ceil(self.qvec[0] / 4.))
         vec = self.vec.flatten()
         if self.comp:
-            real_vals = dec_to_hex(np.real(vec).astype(np.int), num_chars)
-            imag_vals = dec_to_hex(np.imag(vec).astype(np.int), num_chars)
+            real_vals = dec_to_hex(np.real(vec).astype(np.int32), num_chars)
+            imag_vals = dec_to_hex(np.imag(vec).astype(np.int32), num_chars)
             ret_val =  [real_val + (",j" + imag_val) for (real_val, imag_val) in zip(real_vals, imag_vals)]
         else:
             ret_val = dec_to_hex(vec, num_chars)
@@ -336,7 +336,7 @@ class Fi(object):
         """
         range_obj = self.range
         vec =  np.arange(range_obj.min, range_obj.max, range_obj.step)
-        self.vec = (vec * (2 ** self.qvec[1])).astype(np.int)
+        self.vec = (vec * (2 ** self.qvec[1])).astype(np.int32)
 
     def __repr__(self):
         c_str = StringIO()
@@ -548,12 +548,12 @@ def str_to_dec(str_val, base=2, signed_val=True):
     if signed_val is False:
         if complex_vals:
             for [sub_idx, value] in np.ndenumerate(val_int):
-                ret_vals[sub_idx] = np.int(value[0:num_chars], base)
+                ret_vals[sub_idx] = np.int32(value[0:num_chars], base)
                 if complex_vals:
-                    ret_vals[sub_idx] += 1j * np.int(value[imag_lidx:imag_ridx], base)
+                    ret_vals[sub_idx] += 1j * np.int32(value[imag_lidx:imag_ridx], base)
         else:
             for [sub_idx, value] in np.ndenumerate(val_int):
-                ret_vals[sub_idx] = np.int(value, base)
+                ret_vals[sub_idx] = np.int32(value, base)
     else:
         offset = str.find(val_int[sub_idx], 'b') + 1
         corr_fac = 2 ** (num_chars - offset)
@@ -561,11 +561,11 @@ def str_to_dec(str_val, base=2, signed_val=True):
         if complex_vals:
             offsetI = imag_lidx + 2
         for (sub_idx, value) in np.ndenumerate(val_int):
-            ret_vals[sub_idx] = np.int(value[0:num_chars], base)
+            ret_vals[sub_idx] = np.int32(value[0:num_chars], base)
             if (value[offset] == '1'):
                 ret_vals[sub_idx] -= corr_fac
             if complex_vals:
-                temp = np.int(value[imag_lidx:imag_ridx], base)
+                temp = np.int32(value[imag_lidx:imag_ridx], base)
                 if (value[offsetI] == '1'):
                     temp -= corr_fac
                 ret_vals[sub_idx] += 1j * temp
@@ -651,7 +651,7 @@ def ret_num_bitsU(value):
     if value < 1.:
         return 0
     val_new = np.floor(value)
-    return np.ceil(np.log2(np.abs(val_new + .5))).astype(np.int)
+    return np.ceil(np.log2(np.abs(val_new + .5))).astype(np.int32)
 
 def ret_num_bitsS(value):
     """

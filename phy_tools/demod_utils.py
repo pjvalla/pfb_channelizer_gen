@@ -1817,7 +1817,7 @@ class PolyTimingRec(object):
                 * loop_bw_ratio : float
                     Synch loop bandwidth ratio.
         """
-        q_nom = np.float(P) * samps_baud_in / samps_baud_out
+        q_nom = np.float64(P) * samps_baud_in / samps_baud_out
         taps_per_phase = len(poly_fil) // P
         q_start = q_start % P
         # tLock
@@ -1843,7 +1843,7 @@ class PolyTimingRec(object):
             while q_new >= float(P):
                 if ii > num_samps - 1:
                     break
-                q_new -= np.float(P)
+                q_new -= np.float64(P)
                 taps_i[1:] = taps_i[:-1]
                 taps_q[1:] = taps_q[:-1]
                 taps_i[0] = np.real(in_vec[ii])
@@ -1851,7 +1851,7 @@ class PolyTimingRec(object):
                 ii += 1
             while (q_new < 0):
                 # print("stuffing")
-                q_new += np.float(P)
+                q_new += np.float64(P)
                 taps_i[1:] = taps_i[:-1]
                 taps_q[1:] = taps_q[:-1]
                 taps_i[0] = np.real(in_vec[ii])

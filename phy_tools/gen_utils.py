@@ -64,7 +64,7 @@ class RingList(list):
             return list.__getslice__(self, lidxTemp, ridxTemp)
 
 class RingBuffer(object):
-    def __init__(self, size, padding=None, dtype=np.float):
+    def __init__(self, size, padding=None, dtype=np.double):
         self.size = size
         self.padding = size if padding is None else padding
         self.buffer = np.zeros(self.size + self.padding, dtype=dtype)
@@ -650,8 +650,8 @@ def gen_const_pts_list(bit_map, sym_map, EbNo_table=None, sig_gain=1):
     # generate log-likelihood tables -- only supports square
     # constellations.
     for ii in range(bits_per_sym):
-        one_list = np.zeros(sym_map.shape, dtype=np.int)
-        zero_list = np.zeros(sym_map.shape, dtype=np.int)
+        one_list = np.zeros(sym_map.shape, dtype=np.int32)
+        zero_list = np.zeros(sym_map.shape, dtype=np.int32)
         for (sub_idx, sym) in np.ndenumerate(bit_map):
             if (sym[ii] == '1'):
                 one_list[sub_idx] = 1
@@ -1049,8 +1049,8 @@ def gray_code(x):
     num_bits = int(np.ceil(np.log2(np.max(x) + 1)))  # unsigned number of bits
 
     # create map
-    prime = np.int_(np.arange(0, 2**num_bits))
-    diff = np.int_(prime >> 1)
+    prime = np.int32_(np.arange(0, 2**num_bits))
+    diff = np.int32_(prime >> 1)
 
     temp_map = np.zeros((len(prime,)), dtype=int)
 
@@ -1368,7 +1368,7 @@ def add_noise_pwr(snr, in_vec, seed_i=None, seed_q=None):
     return (sig_wnoise, complex_noise)
 
 
-def gen_rand_data(seed=42, num_bits=1000, dtype=np.int):
+def gen_rand_data(seed=42, num_bits=1000, dtype=np.int32):
     """
         Generates a random stream of 1's and 0's
 
@@ -1391,8 +1391,8 @@ def gen_rand_data(seed=42, num_bits=1000, dtype=np.int):
     """
     np.random.seed(seed)
     ret_val = np.round(np.random.rand(num_bits,))
-    if dtype == np.int:
-        return ret_val.astype(np.int)
+    if dtype == np.int32:
+        return ret_val.astype(np.int32)
     else:
         return ret_val
 
@@ -1964,7 +1964,7 @@ def gen_split_tables(addr_vec, table_fi, slice_bits=None):
     table_width = table_fi.qvec[0]
     input_width = int(np.log2(table_fi.len))
     if slice_bits is None:
-        slice_bits = np.ceil(input_width / 2).astype(np.int)
+        slice_bits = np.ceil(input_width / 2).astype(np.int32)
 
     l_bits = qvec[0] - slice_bits
     l_qvec = (l_bits, qvec[1])
@@ -2195,7 +2195,7 @@ def make_log_tables(qvec=(16, 13), table_bits=20):
     """
 
     # slice bits always taken as half of qvec -- able to have 1 combined table for upper, diff, and small tables.
-    slice_bits = np.ceil(qvec[0] / 2).astype(np.int)
+    slice_bits = np.ceil(qvec[0] / 2).astype(np.int32)
 
     eps_val = np.finfo(np.double).eps
     diff_val = qvec[0] - slice_bits
@@ -2290,7 +2290,7 @@ def make_exp_tables(qvec_in=(16, 13), table_bits=16, max_shift=None):
 
     """
     # slice bits always taken as half of qvec -- able to have 1 combined table for upper, diff, and small tables.
-    slice_bits = np.ceil(qvec_in[0] / 2).astype(np.int)
+    slice_bits = np.ceil(qvec_in[0] / 2).astype(np.int32)
 
     upper_val_qvec = (qvec_in[0] - slice_bits, qvec_in[1] - slice_bits)
     l_bits = qvec_in[0] - slice_bits
@@ -2309,7 +2309,7 @@ def make_exp_tables(qvec_in=(16, 13), table_bits=16, max_shift=None):
     # take mean here -- should be close to a constant ratio not necessary
     # to make table out of it.
     ratio_value = np.mean(exp_vals_ratio)
-    shift_table = (np.ceil(np.log2(exp_vals))).astype(np.int)
+    shift_table = (np.ceil(np.log2(exp_vals))).astype(np.int32)
 
     # force minimum shift to be 0
     idx = (shift_table < 0)
@@ -2342,7 +2342,7 @@ def make_exp_tables(qvec_in=(16, 13), table_bits=16, max_shift=None):
     addr_vec = vals_obj.udec
 
     small_exp_vals = np.exp(l_vals)
-    small_shift = (np.ceil(np.log2(small_exp_vals))).astype(np.int)
+    small_shift = (np.ceil(np.log2(small_exp_vals))).astype(np.int32)
     idx = (small_shift < 0)
     small_shift[idx] = 0
 

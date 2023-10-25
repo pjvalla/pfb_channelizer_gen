@@ -224,7 +224,8 @@ def gen_taps():
 
         temp_df = pd.DataFrame(data)
         temp_df = temp_df.set_index('FFT Size')
-        ret_df = ret_df.append(temp_df)
+        #ret_df = ret_df.append(temp_df)
+        ret_df = pd.concat([ret_df, temp_df])
         if fft_size == max_fft:
             break
     file_name = 'taps'
